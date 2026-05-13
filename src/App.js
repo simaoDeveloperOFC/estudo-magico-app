@@ -20,9 +20,15 @@ import {
 } from 'firebase/firestore';
 
 // --- Configuração Firebase ---
-const apiKey = ""; 
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'estudo-magico-pro-v4';
+const firebaseConfig = {
+  apiKey: "AIzaSyC2HOMgI15hXf-0YhceNWmj9dppl1sXi8s",
+  authDomain: "estudo-magico-3276c.firebaseapp.com",
+  projectId: "estudo-magico-3276c",
+  storageBucket: "estudo-magico-3276c.firebasestorage.app",
+  messagingSenderId: "17316174654",
+  appId: "1:17316174654:web:a98e122832c2f0b44cea6f",
+  measurementId: "G-Q4BEFNJZC8"
+};
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const auth = getAuth(app);
