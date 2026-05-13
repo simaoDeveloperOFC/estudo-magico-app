@@ -1,12 +1,13 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   BookOpen, Camera, Upload, Brain, CheckCircle, Trophy, Flame, History, MessageCircle, 
   Mail, User, GraduationCap, Plus, Sword, Zap, Globe, Send, ShieldAlert, Settings, X, 
   LogOut, Search, Clock, Target, Rocket, Award, LayoutDashboard, Bell, Ghost, 
-  Star, ChevronRight, Hash, ShieldCheck, Flag, Languages, MapPin, Eye, Trash2
+  Star, ChevronRight, Hash, ShieldCheck, Flag, Languages, MapPin, Eye, Trash2, Sparkles,
+  ZapOff, Shield, BarChart3, Fingerprint, Activity, Terminal
 } from 'lucide-react';
 
-// --- INITIALIZING SERVICES (FIREBASE SIMULATION & CONFIG) ---
+// --- CONFIGURAÇÃO FIREBASE ---
 import { initializeApp, getApps } from 'firebase/app';
 import { 
   getAuth, signInAnonymously, onAuthStateChanged, signOut 
@@ -30,621 +31,645 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// --- COMPONENTES DE INTERFACE PROFISSIONAIS (UI KIT) ---
+// --- COMPONENTES DE UI PROFISSIONAIS ---
 
-const Card3D = ({ children, className = "", onClick, noHover = false }) => (
+const GlassCard = ({ children, className = "", onClick }) => (
   <div 
     onClick={onClick} 
-    className={`bg-white rounded-[2.5rem] p-8 border-2 border-slate-100 shadow-sm transition-all duration-300 ${!noHover && onClick ? 'cursor-pointer hover:border-indigo-400 hover:shadow-2xl hover:shadow-indigo-100/50 active:scale-[0.98]' : ''} ${className}`}>
+    className={`bg-white/80 backdrop-blur-md rounded-[2rem] p-6 border border-slate-200/50 shadow-xl transition-all duration-500 ${onClick ? 'cursor-pointer hover:shadow-2xl hover:-translate-y-1 active:scale-95' : ''} ${className}`}>
     {children}
   </div>
 );
 
-const Button3D = ({ children, color = "blue", onClick, disabled, className = "", icon: Icon }) => {
-  const themes = {
-    blue: "bg-blue-600 shadow-[0_5px_0_0_#1d4ed8] active:shadow-none",
-    indigo: "bg-indigo-600 shadow-[0_5px_0_0_#4338ca] active:shadow-none",
-    green: "bg-emerald-600 shadow-[0_5px_0_0_#059669] active:shadow-none",
-    red: "bg-rose-600 shadow-[0_5px_0_0_#e11d48] active:shadow-none",
-    dark: "bg-slate-900 shadow-[0_5px_0_0_#000000] active:shadow-none text-white",
-    white: "bg-white text-slate-800 border-2 border-slate-100 shadow-[0_5px_0_0_#f1f5f9] active:shadow-none",
-    orange: "bg-orange-500 shadow-[0_5px_0_0_#ea580c] active:shadow-none"
-  };
-  return (
-    <button 
-      onClick={onClick} 
-      disabled={disabled} 
-      className={`relative flex items-center justify-center gap-2 font-black py-4 px-8 rounded-2xl transition-all active:translate-y-[5px] ${themes[color]} ${color !== 'white' && color !== 'dark' ? 'text-white' : ''} ${disabled ? 'opacity-50 grayscale cursor-not-allowed' : 'hover:brightness-105'} ${className}`}>
-      {Icon && <Icon size={20} />}
-      {children}
-    </button>
-  );
-};
-
-const InputField = ({ label, icon: Icon, ...props }) => (
-  <div className="space-y-2 w-full">
-    <label className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-400 ml-4 tracking-widest">
-      {Icon && <Icon size={12} />} {label}
-    </label>
-    <input 
-      {...props} 
-      className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-slate-700 focus:border-indigo-500 focus:bg-white outline-none transition-all" 
-    />
+const AdminBadge = () => (
+  <div className="flex items-center gap-1.5 bg-rose-100 text-rose-600 px-3 py-1 rounded-full border border-rose-200">
+    <Shield size={12} className="fill-rose-600" />
+    <span className="text-[10px] font-black uppercase tracking-tighter">System Admin</span>
   </div>
 );
 
-// --- APLICAÇÃO PRINCIPAL ---
+// --- COMPONENTE PRINCIPAL ---
 
-export default function EstudoMagicoV3() {
-  // Estados de Sessão e Perfil
+export default function EstudoMagicoPro() {
+  // 🔐 Estados de Segurança e Autenticação
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
-  const [view, setView] = useState('dashboard');
-  const [loading, setLoading] = useState(false);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [view, setView] = useState('loading');
   
-  // Fluxo de Registo
-  const [regStep, setRegStep] = useState(1); // 1: Info, 2: Verificação, 3: Sucesso
-  const [regForm, setRegForm] = useState({ 
+  // 📝 Estados de Registo e Validação
+  const [regStep, setRegStep] = useState(1);
+  const [regError, setRegError] = useState(null);
+  const [regForm, setRegForm] = useState({
     name: '', displayName: '', email: '', 
-    grade: '7.º Ano', language: 'Português', country: 'Portugal' 
+    grade: '7.º Ano', country: 'Portugal', language: 'Português'
   });
-  const [vCode, setVCode] = useState('');
-  const [generatedCode, setGeneratedCode] = useState(null);
+  const [verification, setVerification] = useState({ code: '', generated: null, attempts: 0 });
 
-  // Funcionalidades de Estudo e IA
-  const [chatLog, setChatLog] = useState([
-    { role: 'ai', text: 'Olá! Sou o teu tutor inteligente 🤖 Como posso ajudar nos teus estudos hoje?' }
-  ]);
-  const [chatInput, setChatInput] = useState("");
+  // 🎮 Estados da Arena e Gamificação
+  const [arenaState, setArenaState] = useState({ active: false, score: 0, multiplier: 1, streak: 0 });
   const [leaderboard, setLeaderboard] = useState([]);
-  const [notifications, setNotifications] = useState([]);
   
-  // Arena State
-  const [arenaActive, setArenaActive] = useState(false);
-  const [currentQuestion, setCurrentQuestion] = useState(0);
+  // 🤖 Estados do Tutor IA e Chat
+  const [chat, setChat] = useState({
+    messages: [{ role: 'ai', text: 'Bem-vindo ao centro de comando de estudo, Simão. 🤖 O que vamos conquistar hoje?' }],
+    input: '',
+    isTyping: false
+  });
 
-  // --- EFEITOS E LÓGICA FIREBASE ---
+  // 📢 Notificações e Sistema
+  const [notifications, setNotifications] = useState([]);
+  const [systemLogs, setSystemLogs] = useState([]);
+
+  // --- LÓGICA DE INICIALIZAÇÃO ---
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+    const unsubAuth = onAuthStateChanged(auth, async (u) => {
       if (u) {
         setUser(u);
-        const userRef = doc(db, 'users', u.uid);
-        const snap = await getDoc(userRef);
-        if (snap.exists()) {
-          setProfile(snap.data());
-          setView('dashboard');
-        } else {
-          setRegStep(1);
+        try {
+          const snap = await getDoc(doc(db, 'users', u.uid));
+          if (snap.exists()) {
+            const data = snap.data();
+            setProfile(data);
+            setView('dashboard');
+            addLog("Perfil carregado com sucesso.");
+          } else {
+            setView('onboarding');
+          }
+        } catch (err) {
+          addLog("Erro ao aceder à base de dados: " + err.message);
         }
       } else {
-        signInAnonymously(auth);
+        signInAnonymously(auth).catch(e => addLog("Falha no Login Anónimo: " + e.message));
       }
+      setIsAuthLoading(false);
     });
 
-    // Listener para Leaderboard Real (Sem utilizadores falsos)
-    const q = query(collection(db, 'users'), orderBy('xp', 'desc'), limit(15));
-    const unsubLeader = onSnapshot(q, (snap) => {
-      const users = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setLeaderboard(users);
-    });
+    const unsubLeader = onSnapshot(
+      query(collection(db, 'users'), orderBy('xp', 'desc'), limit(10)),
+      (snap) => setLeaderboard(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
 
-    // Listener para Mensagens Reais do Admin
-    const msgQuery = query(collection(db, 'announcements'), orderBy('timestamp', 'desc'));
-    const unsubMsgs = onSnapshot(msgQuery, (snap) => {
-      setNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-
-    return () => { unsubscribe(); unsubLeader(); unsubMsgs(); };
+    return () => { unsubAuth(); unsubLeader(); };
   }, []);
 
-  // --- HANDLERS DE REGISTO ---
+  // --- UTILITÁRIOS ---
 
-  const initiateRegistration = () => {
-    if (!regForm.email.includes('@')) return alert("⚠️ Email inválido!");
-    if (!regForm.name || !regForm.displayName) return alert("⚠️ Preenche todos os campos!");
-    
-    // Gerar código de verificação
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedCode(code);
-    setRegStep(2);
-    
-    // Simulação de envio de email (Alert para o Simão testar)
-    console.log(`[EMAIL SYSTEM] Para: ${regForm.email} | Código: ${code}`);
-    alert(`🔐 CÓDIGO DE VERIFICAÇÃO: ${code}\n(Este código foi gerado para o teu email: ${regForm.email})`);
+  const addLog = (msg) => {
+    const time = new Date().toLocaleTimeString();
+    setSystemLogs(prev => [`[${time}] ${msg}`, ...prev].slice(0, 50));
   };
 
-  const verifyAndCreate = async () => {
-    if (vCode !== generatedCode) return alert("❌ Código incorreto. Tenta novamente!");
+  const handleRegUpdate = (field, val) => {
+    setRegForm(prev => ({ ...prev, [field]: val }));
+    setRegError(null);
+  };
+
+  // --- ACTIONS ---
+
+  const startRegistration = () => {
+    if (regForm.name.length < 3) return setRegError("Nome demasiado curto ❌");
+    if (!regForm.email.includes('@')) return setRegError("Email inválido ❌");
     
-    setLoading(true);
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    setVerification(prev => ({ ...prev, generated: code }));
+    setRegStep(2);
+    addLog(`Código gerado para ${regForm.email}`);
+    alert(`🔐 CÓDIGO DE ACESSO: ${code}`);
+  };
+
+  const finalizeAccount = async () => {
+    if (verification.code !== verification.generated) {
+      setVerification(prev => ({ ...prev, attempts: prev.attempts + 1 }));
+      return alert("Código Errado! Tentativa " + (verification.attempts + 1));
+    }
+
+    setIsAuthLoading(true);
     try {
-      const isAdmin = regForm.email.trim().toLowerCase() === 'simaopereira953@gmail.com';
-      const userData = {
+      const isAdmin = regForm.email.toLowerCase() === 'simaopereira953@gmail.com';
+      const newProfile = {
         ...regForm,
-        xp: 0,
+        xp: 100,
         level: 1,
-        coins: 150,
-        isAdmin: isAdmin,
-        joinedAt: serverTimestamp(),
-        bio: `Estudante dedicado do ${regForm.grade} 🚀`,
-        stats: { battles: 0, wins: 0, scans: 0 }
+        coins: 200,
+        isAdmin,
+        createdAt: serverTimestamp(),
+        lastActive: serverTimestamp(),
+        inventory: ['Badge de Fundador'],
+        stats: { questions: 0, wins: 0, scans: 0 }
       };
 
-      await setDoc(doc(db, 'users', user.uid), userData);
-      setProfile(userData);
+      await setDoc(doc(db, 'users', user.uid), newProfile);
+      setProfile(newProfile);
       setRegStep(3);
+      addLog("Nova conta criada para: " + regForm.displayName);
     } catch (e) {
-      alert("Erro ao criar perfil: " + e.message);
+      alert("Erro crítico: " + e.message);
     }
-    setLoading(false);
+    setIsAuthLoading(false);
   };
 
-  // --- LÓGICA DO TUTOR IA ---
-
-  const askAI = () => {
-    if (!chatInput.trim()) return;
-    
-    const newMsgs = [...chatLog, { role: 'user', text: chatInput }];
-    setChatLog(newMsgs);
-    setChatInput("");
-
-    // Lógica de resposta simulando IA contextualizada
-    setTimeout(() => {
-      let response = `Interessante o teu pedido sobre "${chatInput}". `;
-      
-      if (chatInput.toLowerCase().includes('matemática')) {
-        response += `Como estás no ${profile.grade}, recomendo focar em expressões numéricas e geometria básica 📐`;
-      } else if (chatInput.toLowerCase().includes('ajuda')) {
-        response += `Estou aqui para explicar qualquer matéria! Podes também usar o Scan de Estudo para eu resumir o teu caderno 📸`;
-      } else {
-        response += `Vou analisar isso com base no currículo de ${profile.country}. Queres que eu crie um pequeno teste de 3 perguntas? 📝`;
-      }
-
-      setChatLog(prev => [...prev, { role: 'ai', text: response }]);
-    }, 1200);
-  };
-
-  // --- ADMIN ACTIONS (SÓ PARA O SIMÃO) ---
-
-  const sendGlobalAnnouncement = async (text) => {
+  const sendGlobalAlert = async (msg) => {
     if (!profile?.isAdmin) return;
     await addDoc(collection(db, 'announcements'), {
-      content: text,
-      author: 'Admin Simão',
-      timestamp: serverTimestamp(),
-      type: 'priority'
+      msg,
+      sender: profile.displayName,
+      time: serverTimestamp(),
+      priority: true
     });
-    alert("📢 Mensagem enviada a todos os utilizadores!");
+    addLog("Aviso global enviado.");
   };
 
   // --- RENDERS ---
 
-  // Tela de Registo / Onboarding
-  if (!profile) return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 overflow-hidden relative">
-      {/* Background Decorativo */}
-      <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
-        <div className="absolute top-20 left-20 w-64 h-64 bg-indigo-500 rounded-full blur-[120px]" />
-        <div className="absolute bottom-20 right-20 w-96 h-96 bg-blue-500 rounded-full blur-[150px]" />
+  if (view === 'loading' || isAuthLoading) {
+    return (
+      <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-6">
+        <div className="relative">
+          <div className="w-24 h-24 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
+          <Brain className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-indigo-500 animate-pulse" size={32} />
+        </div>
+        <p className="text-indigo-400 font-black tracking-widest uppercase animate-pulse">A inicializar sistemas...</p>
       </div>
+    );
+  }
 
-      <Card3D className="max-w-xl w-full relative z-10 p-10 space-y-8" noHover>
-        {regStep === 1 && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
-            <div className="text-center space-y-2">
-              <div className="w-20 h-20 bg-indigo-600 rounded-3xl flex items-center justify-center text-white mx-auto shadow-xl shadow-indigo-200">
-                <Rocket size={40} />
+  if (view === 'onboarding') {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white p-6 flex items-center justify-center">
+        <GlassCard className="max-w-2xl w-full bg-slate-900/50 border-slate-800 p-12">
+          {regStep === 1 && (
+            <div className="space-y-8 animate-in fade-in zoom-in-95 duration-500">
+              <div className="flex flex-col items-center text-center space-y-4">
+                <div className="p-5 bg-indigo-600 rounded-[2rem] shadow-2xl shadow-indigo-500/20">
+                   <Rocket size={48} className="animate-bounce" />
+                </div>
+                <h2 className="text-5xl font-black italic tracking-tighter uppercase">Novo Recruta 🛡️</h2>
+                <p className="text-slate-400 font-bold">Configura o teu acesso ao Estudo Mágico V3.</p>
               </div>
-              <h2 className="text-4xl font-black tracking-tighter uppercase italic">Cria o teu Avatar 🦸‍♂️</h2>
-              <p className="text-slate-400 font-bold">Personaliza a tua experiência de estudo.</p>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <InputField label="Nome Completo" placeholder="Ex: Simão Pereira" onChange={e => setRegForm({...regForm, name: e.target.value})} />
-              <InputField label="Nome de Exibição" placeholder="Ex: Simao_Pro" onChange={e => setRegForm({...regForm, displayName: e.target.value})} />
-              <div className="md:col-span-2">
-                <InputField label="Email Verdadeiro" type="email" placeholder="teu@email.com" onChange={e => setRegForm({...regForm, email: e.target.value})} />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <InputGroup label="Nome Real" val={regForm.name} change={v => handleRegUpdate('name', v)} icon={User} />
+                <InputGroup label="Display Name" val={regForm.displayName} change={v => handleRegUpdate('displayName', v)} icon={Fingerprint} />
+                <div className="md:col-span-2">
+                  <InputGroup label="Email de Estudante" val={regForm.email} change={v => handleRegUpdate('email', v)} icon={Mail} />
+                </div>
+                <SelectGroup label="Ano Escolar" val={regForm.grade} change={v => handleRegUpdate('grade', v)} options={['7.º Ano', '8.º Ano', '9.º Ano']} icon={GraduationCap} />
+                <InputGroup label="País" val={regForm.country} change={v => handleRegUpdate('country', v)} icon={Globe} />
               </div>
-              <InputField label="Ano Escolar" icon={GraduationCap} as="select" onChange={e => setRegForm({...regForm, grade: e.target.value})}>
-                <option>7.º Ano</option><option>8.º Ano</option><option>9.º Ano</option>
-              </InputField>
-              <InputField label="País" icon={MapPin} onChange={e => setRegForm({...regForm, country: e.target.value})} placeholder="Portugal" />
-              <InputField label="Língua" icon={Languages} onChange={e => setRegForm({...regForm, language: e.target.value})} placeholder="Português" />
-            </div>
 
-            <Button3D color="indigo" className="w-full" onClick={initiateRegistration} icon={ChevronRight}>
-              CONTINUAR PARA VERIFICAÇÃO
-            </Button3D>
-          </div>
-        )}
+              {regError && <p className="bg-rose-500/10 text-rose-500 p-4 rounded-2xl text-center font-black text-sm border border-rose-500/20">{regError}</p>}
 
-        {regStep === 2 && (
-          <div className="space-y-8 text-center animate-in zoom-in-95">
-            <div className="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto">
-              <ShieldCheck size={40} />
+              <button 
+                onClick={startRegistration}
+                className="w-full bg-indigo-600 hover:bg-indigo-500 py-6 rounded-3xl font-black text-xl shadow-xl shadow-indigo-600/20 transition-all flex items-center justify-center gap-3 active:scale-95">
+                GERAR CÓDIGO DE ACESSO <ChevronRight />
+              </button>
             </div>
-            <div className="space-y-2">
-              <h3 className="text-3xl font-black tracking-tighter">VERIFICA O TEU EMAIL 📧</h3>
-              <p className="text-slate-500 font-bold">Enviámos um código de 6 dígitos para <span className="text-indigo-600">{regForm.email}</span>.</p>
-            </div>
-            <input 
-              className="w-full p-6 bg-slate-50 border-4 border-slate-100 rounded-[2rem] font-black text-4xl text-center tracking-[1em] focus:border-indigo-500 outline-none transition-all"
-              maxLength={6}
-              placeholder="000000"
-              onChange={e => setVCode(e.target.value)}
-            />
-            <div className="flex flex-col gap-3">
-              <Button3D color="green" className="w-full py-6 text-xl" onClick={verifyAndCreate}>
-                VALIDAR ACESSO ✅
-              </Button3D>
-              <button onClick={() => setRegStep(1)} className="text-slate-400 font-bold hover:text-slate-600">Alterar Email</button>
-            </div>
-          </div>
-        )}
+          )}
 
-        {regStep === 3 && (
-          <div className="space-y-8 text-center animate-in bounce-in">
-            <div className="w-32 h-32 bg-indigo-600 text-white rounded-full flex items-center justify-center mx-auto shadow-2xl">
-              <CheckCircle size={64} />
+          {regStep === 2 && (
+            <div className="text-center space-y-10 animate-in slide-in-from-right-10 duration-500">
+              <div className="w-24 h-24 bg-emerald-500/10 text-emerald-500 rounded-full flex items-center justify-center mx-auto border border-emerald-500/20">
+                <ShieldCheck size={48} />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-4xl font-black uppercase italic tracking-tighter">Verifica o teu Email 📧</h3>
+                <p className="text-slate-400 font-bold">Introduz o código que enviámos para <span className="text-indigo-400">{regForm.email}</span></p>
+              </div>
+              <input 
+                className="w-full bg-slate-800/50 border-2 border-slate-700 p-8 rounded-[2.5rem] text-center text-6xl font-black tracking-[1rem] outline-none focus:border-indigo-500 transition-all"
+                maxLength={6}
+                placeholder="000000"
+                onChange={e => setVerification(prev => ({ ...prev, code: e.target.value }))}
+              />
+              <div className="flex flex-col gap-4">
+                <button onClick={finalizeAccount} className="w-full bg-emerald-600 py-6 rounded-3xl font-black text-xl shadow-lg shadow-emerald-600/20 hover:brightness-110 active:scale-95">VALIDAR CONTA ✅</button>
+                <button onClick={() => setRegStep(1)} className="text-slate-500 font-bold hover:text-white transition-colors">Alterar dados de registo</button>
+              </div>
             </div>
-            <h2 className="text-5xl font-black tracking-tighter uppercase italic">TUDO PRONTO! 🎊</h2>
-            <p className="text-xl font-bold text-slate-500">Bem-vindo à elite do estudo, {regForm.displayName}.</p>
-            <Button3D color="dark" className="w-full" onClick={() => window.location.reload()}>
-              ENTRAR NO DASHBOARD 🚀
-            </Button3D>
-          </div>
-        )}
-      </Card3D>
-    </div>
-  );
+          )}
 
-  // App Principal (Dashboard)
+          {regStep === 3 && (
+            <div className="text-center space-y-8 animate-in zoom-in-90">
+              <div className="relative inline-block">
+                <div className="w-32 h-32 bg-indigo-600 rounded-full flex items-center justify-center mx-auto shadow-[0_0_50px_rgba(79,70,229,0.5)]">
+                  <CheckCircle size={64} />
+                </div>
+                <Sparkles className="absolute -top-4 -right-4 text-amber-400 animate-pulse" size={40} />
+              </div>
+              <h2 className="text-6xl font-black italic uppercase tracking-tighter">CONTA ATIVA! 🎊</h2>
+              <p className="text-xl text-slate-400 font-bold">Bem-vindo à elite do 7.º Ano, {regForm.displayName}.</p>
+              <button onClick={() => window.location.reload()} className="w-full bg-white text-slate-900 py-6 rounded-3xl font-black text-xl hover:bg-slate-100 active:scale-95 transition-all">COMEÇAR A ESTUDAR 🚀</button>
+            </div>
+          )}
+        </GlassCard>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#F1F5F9] font-sans text-slate-900 pb-24">
+    <div className="min-h-screen bg-[#0A0C10] text-slate-200 font-sans selection:bg-indigo-500/30 overflow-x-hidden">
       
-      {/* NAVBAR SUPERIOR EXPANDIDA */}
-      <nav className="bg-white/80 backdrop-blur-xl sticky top-0 z-[100] border-b-2 border-slate-100 p-4">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-4 cursor-pointer group" onClick={() => setView('dashboard')}>
-            {/* INSTRUÇÃO PARA IMAGEM: Aqui podes trocar o ícone pela imagem Captura de ecrã 2026-05-13, às 17.10.06.png */}
-            <div className="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center text-white shadow-lg overflow-hidden">
-               <Brain size={28} />
+      {/* 🌌 Dashboard Moderno Centrado */}
+      <nav className="fixed top-0 left-0 right-0 z-[100] bg-slate-950/80 backdrop-blur-2xl border-b border-slate-800/50 p-4">
+        <div className="max-w-7xl mx-auto flex justify-between items-center px-4">
+          <div className="flex items-center gap-4 group cursor-pointer" onClick={() => setView('dashboard')}>
+            <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-slate-950 shadow-[0_0_20px_rgba(255,255,255,0.2)] group-hover:rotate-12 transition-transform">
+              <Terminal size={26} />
             </div>
             <div className="hidden sm:block">
-              <h1 className="font-black text-xl leading-none tracking-tighter uppercase italic">ESTUDO MÁGICO</h1>
-              <div className="flex gap-2 items-center mt-1">
-                <span className="text-[10px] font-black bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full uppercase italic">V3.0 PRO</span>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{profile.grade} • {profile.country}</span>
+              <h1 className="font-black text-xl italic uppercase tracking-tighter leading-none">Estudo Mágico</h1>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[10px] font-black bg-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded-lg border border-indigo-500/30 uppercase">Build 2026.5</span>
+                {profile.isAdmin && <AdminBadge />}
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 md:gap-6">
-            {/* Stats Visuais */}
-            <div className="hidden lg:flex items-center gap-6 bg-slate-50 px-6 py-2 rounded-2xl border border-slate-100">
-              <div className="flex items-center gap-2">
-                <Flame className="text-orange-500" size={18} />
-                <span className="font-black text-sm">{profile.xp} XP</span>
-              </div>
-              <div className="w-px h-4 bg-slate-200" />
-              <div className="flex items-center gap-2">
-                <Zap className="text-amber-500" size={18} />
-                <span className="font-black text-sm">{profile.coins}</span>
-              </div>
-            </div>
+          <div className="flex items-center gap-3">
+             <div className="hidden lg:flex items-center gap-6 bg-slate-900/50 border border-slate-800 px-6 py-2.5 rounded-2xl mr-4">
+                <div className="flex items-center gap-2">
+                  <Flame className="text-orange-500" size={18} />
+                  <span className="font-black text-sm">{profile.xp} XP</span>
+                </div>
+                <div className="w-px h-4 bg-slate-800" />
+                <div className="flex items-center gap-2">
+                  <Zap className="text-amber-400" size={18} />
+                  <span className="font-black text-sm">{profile.coins}</span>
+                </div>
+             </div>
 
-            {/* Acesso Admin (Exclusivo para o email do Simão) */}
-            {profile.isAdmin && (
-              <button 
-                onClick={() => setView('admin')}
-                className={`p-3 rounded-2xl transition-all border-2 ${view === 'admin' ? 'bg-rose-500 text-white border-rose-500 shadow-lg shadow-rose-200' : 'bg-rose-50 text-rose-500 border-rose-100 hover:bg-rose-500 hover:text-white'}`}>
-                <ShieldAlert size={24} />
-              </button>
-            )}
+             {profile.isAdmin && (
+               <button onClick={() => setView('admin')} className={`p-3.5 rounded-2xl transition-all border ${view === 'admin' ? 'bg-rose-600 border-rose-500 shadow-lg shadow-rose-600/20' : 'bg-slate-900 border-slate-800 hover:border-rose-500 text-rose-500'}`}>
+                 <ShieldAlert size={22} />
+               </button>
+             )}
 
-            <button className="relative p-3 bg-slate-100 rounded-2xl text-slate-500 hover:bg-indigo-600 hover:text-white transition-all">
-              <Bell size={24} />
-              {notifications.length > 0 && (
-                <span className="absolute top-2 right-2 w-4 h-4 bg-rose-500 border-4 border-white rounded-full" />
-              )}
-            </button>
+             <button className="p-3.5 bg-slate-900 border border-slate-800 rounded-2xl text-slate-400 hover:text-white transition-all relative">
+                <Bell size={22} />
+                <div className="absolute top-3 right-3 w-3 h-3 bg-indigo-500 border-2 border-slate-950 rounded-full" />
+             </button>
 
-            <div className="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center text-white font-black cursor-pointer hover:scale-105 transition-all">
-              {profile.displayName.substring(0, 2).toUpperCase()}
-            </div>
+             <div className="w-12 h-12 bg-gradient-to-br from-slate-700 to-slate-900 rounded-2xl flex items-center justify-center border border-slate-700 shadow-xl cursor-pointer hover:scale-110 active:scale-95 transition-all">
+                <User size={24} className="text-slate-400" />
+             </div>
           </div>
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto p-6 md:p-10">
+      <main className="max-w-7xl mx-auto pt-32 pb-40 px-6">
         
-        {/* VIEW: DASHBOARD PRINCIPAL */}
         {view === 'dashboard' && (
-          <div className="space-y-12 animate-in fade-in duration-700">
-            
-            {/* Hero Section */}
-            <header className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-8">
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                   <h2 className="text-6xl md:text-7xl font-black text-slate-900 tracking-tighter leading-none italic uppercase">OLÁ, {profile.displayName.split(' ')[0]}! ⚡</h2>
+          <div className="space-y-16 animate-in fade-in slide-in-from-bottom-8 duration-700">
+             
+             {/* Header Section */}
+             <section className="flex flex-col md:flex-row justify-between items-start md:items-end gap-8">
+                <div className="space-y-4">
+                   <h2 className="text-7xl md:text-8xl font-black tracking-tighter italic uppercase leading-[0.8] text-white">VAMOS LÁ,<br/>{profile.displayName.split(' ')[0]} ⚡</h2>
+                   <p className="text-2xl font-bold text-slate-500 max-w-xl italic">A tua inteligência artificial está pronta para otimizar o teu estudo do {profile.grade}.</p>
                 </div>
-                <p className="text-xl font-bold text-slate-400 max-w-xl">Pronto para dominar o {profile.grade}? Hoje temos novos desafios na Arena e o teu Tutor IA está atualizado. 📚</p>
-              </div>
-              <div className="flex gap-4 w-full lg:w-auto">
-                 <Button3D color="indigo" className="flex-1 lg:flex-none py-6 px-10 text-xl" icon={Sword} onClick={() => setView('arena')}>
-                    JOGAR ARENA
-                 </Button3D>
-              </div>
-            </header>
+                <div className="flex gap-4 w-full md:w-auto">
+                   <button 
+                    onClick={() => setView('arena')}
+                    className="flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-500 text-white px-10 py-6 rounded-[2rem] font-black text-2xl italic uppercase tracking-tight shadow-2xl shadow-indigo-600/30 transition-all active:scale-95 flex items-center justify-center gap-4">
+                    <Sword size={28} /> ENTRAR NA ARENA
+                   </button>
+                </div>
+             </section>
 
-            {/* Grid de Atividades */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-               <Card3D onClick={() => setView('study')} className="bg-blue-600 text-white border-none group overflow-hidden">
-                  <div className="relative z-10">
-                    <Camera size={40} className="mb-6 group-hover:rotate-12 transition-transform" />
-                    <h3 className="text-2xl font-black leading-tight uppercase italic">Scan de<br/>Estudo IA</h3>
-                    <p className="mt-2 text-blue-100 font-bold text-sm">Resumos automáticos do teu caderno 📸</p>
-                  </div>
-                  <Sparkles className="absolute -right-6 -bottom-6 text-white/10" size={160} />
-               </Card3D>
-
-               <Card3D className="bg-emerald-500 text-white border-none group overflow-hidden">
-                  <div className="relative z-10">
-                    <BookOpen size={40} className="mb-6 group-hover:scale-110 transition-transform" />
-                    <h3 className="text-2xl font-black leading-tight uppercase italic">Minha<br/>Biblioteca</h3>
-                    <p className="mt-2 text-emerald-50 font-bold text-sm">Todos os teus conteúdos salvos 📖</p>
-                  </div>
-                  <History className="absolute -right-6 -bottom-6 text-white/10" size={160} />
-               </Card3D>
-
-               <Card3D className="bg-slate-900 text-white border-none group overflow-hidden col-span-1 md:col-span-2">
-                  <div className="relative z-10 flex flex-col h-full justify-between">
-                    <div className="flex justify-between items-start">
-                       <h3 className="text-3xl font-black leading-none uppercase italic tracking-tighter">Missão do Dia 🎯</h3>
-                       <Badge color="orange">XP x2</Badge>
-                    </div>
-                    <div className="space-y-4 mt-8">
-                       <div className="flex justify-between items-end text-sm font-black uppercase">
-                          <span>Completar 3 Quiz de Matemática</span>
-                          <span className="text-amber-400">1 / 3</span>
-                       </div>
-                       <div className="w-full h-4 bg-white/10 rounded-full overflow-hidden border border-white/5">
-                          <div className="h-full bg-amber-400 transition-all duration-1000" style={{ width: '33%' }} />
-                       </div>
-                    </div>
-                  </div>
-                  <Target className="absolute -right-10 -top-10 text-white/5" size={240} />
-               </Card3D>
-            </div>
-
-            {/* Leaderboard e Chat Row */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-               
-               {/* LEADERBOARD REAL */}
-               <Card3D className="lg:col-span-2" noHover>
-                  <div className="flex justify-between items-center mb-10">
-                    <h3 className="text-3xl font-black flex items-center gap-4 italic tracking-tighter uppercase">
-                      <Trophy className="text-amber-500" size={32} /> Elite do {profile.country}
-                    </h3>
-                    <div className="flex gap-2">
-                       <div className="p-2 bg-slate-50 rounded-xl border border-slate-100"><Search size={18} /></div>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-3">
-                    {leaderboard.length === 0 ? (
-                      <div className="py-20 text-center text-slate-400 font-bold uppercase tracking-widest animate-pulse">
-                        A recrutar estudantes... 📡
+             {/* Functional Grid */}
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                <FeatureCard 
+                  title="Scanner IA" 
+                  desc="Converte o teu caderno em resumos" 
+                  icon={Camera} 
+                  color="bg-blue-600" 
+                  sub="Disponível 📸"
+                />
+                <FeatureCard 
+                  title="Biblioteca" 
+                  desc="Revê os teus conteúdos salvos" 
+                  icon={BookOpen} 
+                  color="bg-emerald-600" 
+                  sub="24 Ficheiros 📖"
+                />
+                <div className="lg:col-span-2 bg-slate-900/40 rounded-[2.5rem] border border-slate-800 p-10 relative overflow-hidden group">
+                   <div className="relative z-10 flex flex-col h-full justify-between space-y-12">
+                      <div className="flex justify-between items-start">
+                         <div className="space-y-1">
+                            <h3 className="text-3xl font-black italic uppercase tracking-tighter text-white">Objetivo Semanal 🎯</h3>
+                            <p className="text-slate-500 font-bold">Domina a Matemática do 7º Ano</p>
+                         </div>
+                         <div className="bg-amber-500/10 text-amber-500 border border-amber-500/20 px-4 py-2 rounded-xl font-black text-sm">XP x3 ATIVO</div>
                       </div>
-                    ) : (
-                      leaderboard.map((u, index) => (
-                        <div key={u.id} className={`flex items-center justify-between p-6 rounded-[2rem] transition-all ${u.email === profile.email ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-200 scale-[1.02] z-10 relative' : 'bg-slate-50 hover:bg-slate-100'}`}>
-                          <div className="flex items-center gap-6">
-                             <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg ${index === 0 ? 'bg-amber-400 text-white rotate-6' : index === 1 ? 'bg-slate-300 text-white' : index === 2 ? 'bg-orange-400 text-white' : 'bg-white text-slate-400 border border-slate-100'}`}>
-                               #{index + 1}
+                      <div className="space-y-4">
+                         <div className="flex justify-between font-black text-xs uppercase tracking-widest text-slate-400">
+                            <span>Progresso do Nível {profile.level}</span>
+                            <span className="text-indigo-400">750 / 1000 XP</span>
+                         </div>
+                         <div className="h-6 bg-slate-950 rounded-full border border-slate-800 p-1.5">
+                            <div className="h-full bg-gradient-to-r from-indigo-600 to-blue-500 rounded-full shadow-[0_0_20px_rgba(79,70,229,0.4)] transition-all duration-1000" style={{ width: '75%' }} />
+                         </div>
+                      </div>
+                   </div>
+                   <Activity className="absolute -right-20 -bottom-20 text-indigo-500/5 group-hover:text-indigo-500/10 transition-colors" size={350} />
+                </div>
+             </div>
+
+             {/* Secondary Content Row */}
+             <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+                
+                {/* 🏆 Leaderboard Profissional */}
+                <div className="lg:col-span-2 bg-slate-900/30 rounded-[3rem] border border-slate-800/50 p-10">
+                   <div className="flex justify-between items-center mb-12">
+                      <div className="flex items-center gap-5">
+                         <div className="p-4 bg-amber-500/10 text-amber-500 rounded-3xl border border-amber-500/20">
+                            <Trophy size={32} />
+                         </div>
+                         <h3 className="text-4xl font-black italic uppercase tracking-tighter text-white">Top Estudantes {profile.country}</h3>
+                      </div>
+                      <button className="text-slate-500 font-black hover:text-white transition-colors text-sm uppercase tracking-widest">Ver Todos</button>
+                   </div>
+
+                   <div className="space-y-4">
+                      {leaderboard.length === 0 ? (
+                        <div className="py-20 text-center flex flex-col items-center gap-4 text-slate-600">
+                           <div className="w-16 h-16 border-4 border-slate-800 border-t-indigo-500 rounded-full animate-spin" />
+                           <p className="font-black uppercase tracking-widest text-xs">Sincronizando Ranking...</p>
+                        </div>
+                      ) : (
+                        leaderboard.map((u, i) => (
+                          <div key={u.id} className={`group flex items-center justify-between p-6 rounded-[2rem] border transition-all ${u.id === user.uid ? 'bg-indigo-600 border-indigo-400 text-white shadow-2xl scale-[1.02]' : 'bg-slate-900/40 border-slate-800 hover:border-slate-700'}`}>
+                             <div className="flex items-center gap-8">
+                                <span className={`text-2xl font-black italic ${i === 0 ? 'text-amber-400' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-orange-400' : 'text-slate-600'}`}>#{i+1}</span>
+                                <div className="flex items-center gap-4">
+                                   <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-xl border-2 ${u.id === user.uid ? 'bg-white text-indigo-600 border-white' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
+                                      {u.displayName[0].toUpperCase()}
+                                   </div>
+                                   <div>
+                                      <p className="font-black text-xl tracking-tight leading-none">{u.displayName}</p>
+                                      <p className={`text-[10px] font-black uppercase mt-1 tracking-widest ${u.id === user.uid ? 'text-indigo-200' : 'text-slate-500'}`}>{u.grade} • {u.country}</p>
+                                   </div>
+                                </div>
                              </div>
-                             <div className="flex flex-col">
-                                <span className="font-black text-xl tracking-tight">{u.displayName}</span>
-                                <span className={`text-[10px] font-black uppercase tracking-widest ${u.email === profile.email ? 'text-indigo-200' : 'text-slate-400'}`}>{u.grade} • {u.country}</span>
+                             <div className="flex items-center gap-6">
+                                <div className="text-right">
+                                   <p className="text-2xl font-black leading-none">{u.xp.toLocaleString()}</p>
+                                   <p className={`text-[10px] font-black uppercase mt-1 ${u.id === user.uid ? 'text-indigo-200' : 'text-slate-500'}`}>XP MÁGICO</p>
+                                </div>
+                                <ChevronRight className={u.id === user.uid ? 'text-white/40' : 'text-slate-700'} />
                              </div>
                           </div>
-                          <div className="flex items-center gap-3">
-                             <div className="text-right">
-                                <p className="font-black text-xl leading-none">{u.xp.toLocaleString()}</p>
-                                <p className={`text-[10px] font-black uppercase ${u.email === profile.email ? 'text-indigo-200' : 'text-slate-400'}`}>XP TOTAL</p>
-                             </div>
-                             <ChevronRight size={20} className={u.email === profile.email ? 'text-white/50' : 'text-slate-300'} />
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-               </Card3D>
+                        ))
+                      )}
+                   </div>
+                </div>
 
-               {/* TUTOR IA INTEGRADO */}
-               <div className="flex flex-col gap-6">
-                  <Card3D className="bg-slate-900 text-white border-none flex flex-col h-[600px] overflow-hidden" noHover>
-                     <div className="flex items-center gap-4 mb-8 border-b border-white/10 pb-6">
-                        <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                          <MessageCircle size={24} />
-                        </div>
-                        <div>
-                          <h4 className="font-black text-xl leading-none uppercase italic tracking-tight">Tutor IA Profissional</h4>
-                          <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
-                             <span className="w-2 h-2 bg-indigo-400 rounded-full animate-pulse" /> Ligado ao {profile.grade}
-                          </span>
-                        </div>
-                     </div>
-
-                     <div className="flex-1 overflow-y-auto space-y-4 mb-6 pr-2 custom-scrollbar">
-                        {chatLog.map((msg, i) => (
-                          <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                            <div className={`max-w-[85%] p-5 rounded-[1.5rem] font-bold text-sm leading-relaxed ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-none shadow-lg' : 'bg-white/10 text-slate-100 rounded-tl-none border border-white/10'}`}>
-                              {msg.text}
+                {/* 🤖 Terminal IA */}
+                <div className="flex flex-col gap-8">
+                   <div className="bg-slate-900 rounded-[2.5rem] border border-slate-800 overflow-hidden flex flex-col h-[650px] shadow-2xl relative">
+                      <div className="p-6 border-b border-slate-800 bg-slate-900/80 backdrop-blur-md flex items-center gap-4">
+                         <div className="w-12 h-12 bg-indigo-600/10 text-indigo-500 rounded-2xl flex items-center justify-center border border-indigo-500/20">
+                            <Brain size={24} />
+                         </div>
+                         <div>
+                            <h4 className="font-black text-lg text-white leading-none uppercase italic">Tutor IA Estudo</h4>
+                            <div className="flex items-center gap-2 mt-1">
+                               <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                               <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest italic">Core V3 Online</span>
                             </div>
-                            <span className="text-[8px] font-black uppercase text-slate-500 mt-1 px-2">{msg.role === 'ai' ? 'Bot Inteligente' : 'Tu'}</span>
-                          </div>
-                        ))}
-                     </div>
+                         </div>
+                      </div>
 
-                     <div className="flex gap-3 bg-white/5 p-2 rounded-[2rem] border border-white/10 focus-within:border-indigo-500 transition-all">
-                        <input 
-                          className="flex-1 bg-transparent p-4 outline-none font-bold text-white text-sm" 
-                          placeholder="Pergunta qualquer coisa..." 
-                          value={chatInput}
-                          onChange={e => setChatInput(e.target.value)}
-                          onKeyPress={e => e.key === 'Enter' && askAI()}
-                        />
-                        <button 
-                          onClick={askAI}
-                          className="w-14 h-14 bg-indigo-600 rounded-full flex items-center justify-center text-white hover:scale-105 active:scale-95 transition-all shadow-lg shadow-indigo-500/20">
-                          <Send size={24} />
-                        </button>
-                     </div>
-                  </Card3D>
+                      <div className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-hide">
+                         {chat.messages.map((m, i) => (
+                           <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                              <div className={`max-w-[90%] p-6 rounded-[2rem] font-bold text-sm leading-relaxed shadow-lg ${m.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-200 rounded-tl-none border border-slate-700'}`}>
+                                 {m.text}
+                              </div>
+                              <span className="text-[9px] font-black uppercase text-slate-600 mt-2 px-2 italic tracking-widest">{m.role === 'ai' ? 'Sistema Inteligente' : 'Comando de ' + profile.displayName}</span>
+                           </div>
+                         ))}
+                      </div>
 
-                  {/* Wildcard Card: Sugestão Aleatória */}
-                  <Card3D className="bg-orange-50 border-orange-100" onClick={() => alert("Explorando novos mundos...")}>
-                     <div className="flex items-center gap-4">
-                        <div className="p-3 bg-orange-500 text-white rounded-2xl"><Globe size={24}/></div>
-                        <div>
-                           <h4 className="font-black text-orange-900 uppercase italic">Desafio Aleatório</h4>
-                           <p className="text-xs font-bold text-orange-700">Aprende algo fora do 7º ano hoje! 🌍</p>
-                        </div>
-                     </div>
-                  </Card3D>
-               </div>
-            </div>
+                      <div className="p-6 bg-slate-900/80 backdrop-blur-md border-t border-slate-800">
+                         <div className="flex gap-3 bg-slate-950 p-2.5 rounded-3xl border border-slate-800 focus-within:border-indigo-500 transition-all">
+                            <input 
+                              className="flex-1 bg-transparent px-4 font-bold text-sm text-white outline-none" 
+                              placeholder="Qual é o tema de hoje?..."
+                              value={chat.input}
+                              onChange={e => setChat(p => ({ ...p, input: e.target.value }))}
+                              onKeyPress={e => e.key === 'Enter' && handleChatSend()}
+                            />
+                            <button 
+                              onClick={handleChatSend}
+                              className="w-14 h-14 bg-indigo-600 text-white rounded-2xl flex items-center justify-center hover:bg-indigo-500 active:scale-90 transition-all shadow-lg shadow-indigo-600/20">
+                              <Send size={24} />
+                            </button>
+                         </div>
+                      </div>
+                   </div>
+
+                   {/* Quick Actions Card */}
+                   <div className="bg-gradient-to-br from-amber-500 to-orange-600 p-8 rounded-[2.5rem] shadow-xl shadow-amber-500/10 flex items-center justify-between group cursor-pointer overflow-hidden relative">
+                      <div className="relative z-10">
+                        <h4 className="text-2xl font-black italic uppercase tracking-tighter text-white">Daily Bonus 🎁</h4>
+                        <p className="text-amber-100 font-bold text-sm">Resgata os teus 50 XP diários!</p>
+                      </div>
+                      <Award size={64} className="text-white/20 group-hover:scale-110 transition-transform relative z-10" />
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 blur-3xl rounded-full" />
+                   </div>
+                </div>
+             </div>
           </div>
         )}
 
-        {/* VIEW: ADMIN PANEL (SÓ PARA O SIMÃO) */}
+        {/* --- VIEW: ADMIN PANEL --- */}
         {view === 'admin' && profile.isAdmin && (
-          <div className="space-y-10 animate-in slide-in-from-top-10 duration-500">
-             <header className="flex justify-between items-center">
-                <div className="space-y-2">
-                   <h2 className="text-5xl font-black tracking-tighter uppercase italic text-rose-600">PAINEL DE CONTROLO 🛡️</h2>
-                   <p className="text-slate-500 font-bold italic underline decoration-rose-200">Acesso exclusivo: {profile.email}</p>
+          <div className="space-y-12 animate-in fade-in slide-in-from-top-10 duration-500">
+             <header className="flex justify-between items-center bg-slate-900/50 p-10 rounded-[3rem] border border-slate-800">
+                <div className="space-y-3">
+                   <div className="flex items-center gap-4">
+                      <h2 className="text-6xl font-black italic uppercase tracking-tighter text-rose-500">Master Control 🛡️</h2>
+                      <AdminBadge />
+                   </div>
+                   <p className="text-xl font-bold text-slate-500 italic">Administrador Ativo: <span className="text-white">{profile.email}</span></p>
                 </div>
-                <Button3D color="white" onClick={() => setView('dashboard')}>FECHAR ADMIN</Button3D>
+                <button 
+                  onClick={() => setView('dashboard')}
+                  className="bg-white text-slate-950 px-10 py-5 rounded-[2rem] font-black uppercase text-sm hover:bg-slate-200 transition-all active:scale-95">
+                  Sair da Consola
+                </button>
              </header>
 
-             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <Card3D className="bg-white border-2 border-slate-100 text-center py-10" noHover>
-                   <p className="text-slate-400 font-black text-xs uppercase tracking-widest mb-2">Utilizadores Totais</p>
-                   <p className="text-6xl font-black text-slate-900">{leaderboard.length}</p>
-                </Card3D>
-                <Card3D className="bg-white border-2 border-slate-100 text-center py-10" noHover>
-                   <p className="text-slate-400 font-black text-xs uppercase tracking-widest mb-2">Mensagens Ativas</p>
-                   <p className="text-6xl font-black text-slate-900">{notifications.length}</p>
-                </Card3D>
-                <Card3D className="bg-white border-2 border-slate-100 text-center py-10" noHover>
-                   <p className="text-slate-400 font-black text-xs uppercase tracking-widest mb-2">Relatórios</p>
-                   <p className="text-6xl font-black text-rose-500">0</p>
-                </Card3D>
-                <Card3D className="bg-slate-900 text-white border-none text-center py-10" noHover>
-                   <p className="text-slate-400 font-black text-xs uppercase tracking-widest mb-2">Status Sistema</p>
-                   <div className="flex items-center justify-center gap-3 mt-4">
-                      <span className="w-4 h-4 bg-emerald-500 rounded-full animate-ping" />
-                      <span className="text-2xl font-black uppercase">ONLINE</span>
-                   </div>
-                </Card3D>
+             <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <StatCard label="Total Users" val={leaderboard.length} icon={User} color="text-blue-500" />
+                <StatCard label="Live Queries" val="1.4k" icon={Brain} color="text-indigo-500" />
+                <StatCard label="System Load" val="12%" icon={Activity} color="text-emerald-500" />
+                <StatCard label="Security Check" val="Safe" icon={ShieldCheck} color="text-rose-500" />
              </div>
 
              <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                <Card3D className="p-8" noHover>
-                   <h3 className="text-2xl font-black mb-8 border-b-2 border-slate-50 pb-4 uppercase italic">Enviar Notificação Global 📢</h3>
+                <div className="bg-slate-900/50 p-10 rounded-[3rem] border border-slate-800">
+                   <h3 className="text-2xl font-black italic uppercase mb-8 flex items-center gap-3"><Terminal size={24} /> Broadcast Global 📢</h3>
                    <div className="space-y-6">
                       <textarea 
-                        className="w-full h-32 p-5 bg-slate-50 border-2 border-slate-100 rounded-[2rem] font-bold outline-none focus:border-rose-500 transition-all"
-                        placeholder="Escreve aqui o aviso importante para todos os alunos..."
-                        id="admin_msg"
+                        id="admin_msg_text"
+                        className="w-full h-40 bg-slate-950 border-2 border-slate-800 p-6 rounded-[2rem] font-bold text-white outline-none focus:border-rose-500 transition-all resize-none"
+                        placeholder="Escreve a mensagem que todos os alunos vão ver no topo..."
                       />
-                      <Button3D color="red" className="w-full py-5" icon={Send} onClick={() => {
-                        const val = document.getElementById('admin_msg').value;
-                        if(val) { sendGlobalAnnouncement(val); document.getElementById('admin_msg').value = ''; }
-                      }}>
-                        PUBLICAR AVISO
-                      </Button3D>
+                      <button 
+                        onClick={() => {
+                          const val = document.getElementById('admin_msg_text').value;
+                          if(val) { sendGlobalAlert(val); document.getElementById('admin_msg_text').value = ''; }
+                        }}
+                        className="w-full bg-rose-600 hover:bg-rose-500 py-6 rounded-3xl font-black text-xl shadow-xl shadow-rose-600/20 flex items-center justify-center gap-3">
+                        <Send size={20} /> ENVIAR COM PRIORIDADE
+                      </button>
                    </div>
-                </Card3D>
+                </div>
 
-                <Card3D className="p-8 overflow-hidden" noHover>
-                   <h3 className="text-2xl font-black mb-8 border-b-2 border-slate-50 pb-4 uppercase italic">Gestão de Alunos 👥</h3>
-                   <div className="max-h-[400px] overflow-y-auto space-y-4 pr-2">
-                      {leaderboard.map(u => (
-                        <div key={u.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                           <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 bg-slate-200 rounded-xl flex items-center justify-center font-black text-slate-500">{u.displayName[0]}</div>
-                              <div>
-                                 <p className="font-black text-sm">{u.displayName}</p>
-                                 <p className="text-[10px] font-bold text-slate-400">{u.email}</p>
-                              </div>
-                           </div>
-                           <div className="flex gap-2">
-                              <button className="p-2 bg-white text-slate-400 rounded-lg hover:text-indigo-600 border border-slate-100"><Eye size={18}/></button>
-                              <button className="p-2 bg-white text-slate-400 rounded-lg hover:text-rose-600 border border-slate-100"><Trash2 size={18}/></button>
-                           </div>
+                <div className="bg-slate-900/50 p-10 rounded-[3rem] border border-slate-800 flex flex-col h-[500px]">
+                   <h3 className="text-2xl font-black italic uppercase mb-8 flex items-center gap-3"><History size={24} /> Registos do Sistema</h3>
+                   <div className="flex-1 overflow-y-auto space-y-3 font-mono text-xs pr-4 custom-scrollbar">
+                      {systemLogs.map((log, i) => (
+                        <div key={i} className="p-3 bg-slate-950 border-l-2 border-slate-700 text-slate-500 hover:border-indigo-500 transition-colors">
+                           {log}
                         </div>
                       ))}
                    </div>
-                </Card3D>
+                </div>
              </div>
           </div>
         )}
       </main>
 
-      {/* FOOTER MOBILE FIXO (UI ESTILO APP) */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t-2 border-slate-100 p-4 flex justify-around items-center lg:hidden z-[200]">
-        <button onClick={() => setView('dashboard')} className={`p-4 rounded-2xl transition-all ${view === 'dashboard' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}><LayoutDashboard size={24}/></button>
-        <button onClick={() => setView('study')} className={`p-4 rounded-2xl transition-all ${view === 'study' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400'}`}><Camera size={24}/></button>
-        <div className="w-16 h-16 bg-slate-900 rounded-[1.5rem] -mt-12 flex items-center justify-center text-white shadow-2xl border-[6px] border-[#F1F5F9]" onClick={() => setView('arena')}>
-           <Sword size={28} />
-        </div>
-        <button className="p-4 text-slate-400"><BookOpen size={24}/></button>
-        <button onClick={() => setView('admin')} className={`p-4 rounded-2xl transition-all ${view === 'admin' ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-400'}`}><Settings size={24}/></button>
+      {/* 📱 Barra de Navegação Inferior (Mobile Pro) */}
+      <nav className="fixed bottom-0 left-0 right-0 lg:hidden bg-slate-950/90 backdrop-blur-3xl border-t border-slate-800 p-6 z-[200]">
+         <div className="flex justify-around items-center max-w-lg mx-auto">
+            <NavIcon icon={LayoutDashboard} active={view === 'dashboard'} onClick={() => setView('dashboard')} />
+            <NavIcon icon={Camera} active={view === 'study'} onClick={() => setView('study')} />
+            <div 
+              onClick={() => setView('arena')}
+              className="w-20 h-20 bg-indigo-600 -mt-20 rounded-[2rem] border-[10px] border-[#0A0C10] shadow-2xl flex items-center justify-center text-white active:scale-90 transition-all">
+               <Sword size={32} />
+            </div>
+            <NavIcon icon={BookOpen} active={view === 'library'} onClick={() => setView('library')} />
+            <NavIcon icon={profile.isAdmin ? ShieldAlert : Settings} active={view === 'admin'} onClick={() => profile.isAdmin ? setView('admin') : setView('settings')} danger={profile.isAdmin} />
+         </div>
       </nav>
 
-      {/* ESTILOS GLOBAIS CSS */}
       <style dangerouslySetInnerHTML={{ __html: `
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;500;700&display=swap');
         
         body { 
-          font-family: 'Inter', sans-serif; 
-          -webkit-font-smoothing: antialiased;
+          font-family: 'Space Grotesk', sans-serif; 
+          background-color: #0A0C10;
           overflow-x: hidden;
         }
 
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
 
-        @keyframes bounce-in {
-          0% { transform: scale(0.3); opacity: 0; }
-          50% { transform: scale(1.05); }
-          70% { transform: scale(0.9); }
-          100% { transform: scale(1); opacity: 1; }
+        @keyframes float {
+          0% { transform: translateY(0px); }
+          50% { transform: translateY(-10px); }
+          100% { transform: translateY(0px); }
         }
-        .animate-bounce-in { animation: bounce-in 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        .animate-float { animation: float 3s ease-in-out infinite; }
       `}} />
     </div>
   );
+
+  // --- HANDLERS AUXILIARES ---
+
+  function handleChatSend() {
+    if (!chat.input.trim()) return;
+    const newMsg = { role: 'user', text: chat.input };
+    setChat(p => ({ 
+      ...p, 
+      messages: [...p.messages, newMsg],
+      input: '',
+      isTyping: true 
+    }));
+
+    setTimeout(() => {
+      let res = "Excelente pergunta sobre " + newMsg.text + ". ";
+      if (newMsg.text.toLowerCase().includes('história')) {
+        res += "Sabias que em Portugal o 7º ano foca muito na expansão marítima? Queres um quiz rápido?";
+      } else {
+        res += "Vou preparar um plano de estudo personalizado para o teu ano (" + profile.grade + ").";
+      }
+      setChat(p => ({ 
+        ...p, 
+        messages: [...p.messages, { role: 'ai', text: res }],
+        isTyping: false 
+      }));
+    }, 1500);
+  }
 }
 
-// --- SUB-COMPONENTES AUXILIARES ---
+// --- SUB-COMPONENTES AUXILIARES DE ESTILO ---
 
-const Badge = ({ children, color = "blue" }) => {
-  const colors = {
-    blue: "bg-blue-100 text-blue-700",
-    indigo: "bg-indigo-100 text-indigo-700",
-    orange: "bg-orange-100 text-orange-700",
-    rose: "bg-rose-100 text-rose-700",
-    emerald: "bg-emerald-100 text-emerald-700"
-  };
-  return (
-    <span className={`px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${colors[color]}`}>
-      {children}
-    </span>
-  );
-};
+const InputGroup = ({ label, val, change, icon: Icon, type = "text" }) => (
+  <div className="space-y-3">
+    <label className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500 ml-5">
+      <Icon size={12} /> {label}
+    </label>
+    <input 
+      type={type}
+      value={val}
+      onChange={e => change(e.target.value)}
+      className="w-full bg-slate-900 border border-slate-800 p-5 rounded-2xl font-bold text-white outline-none focus:border-indigo-500 transition-all"
+    />
+  </div>
+);
+
+const SelectGroup = ({ label, val, change, options, icon: Icon }) => (
+  <div className="space-y-3">
+    <label className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500 ml-5">
+      <Icon size={12} /> {label}
+    </label>
+    <select 
+      value={val}
+      onChange={e => change(e.target.value)}
+      className="w-full bg-slate-900 border border-slate-800 p-5 rounded-2xl font-bold text-white outline-none focus:border-indigo-500 transition-all appearance-none cursor-pointer">
+      {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+    </select>
+  </div>
+);
+
+const FeatureCard = ({ title, desc, icon: Icon, color, sub }) => (
+  <div className={`${color} p-10 rounded-[2.5rem] shadow-2xl shadow-${color.split('-')[1]}-600/20 group cursor-pointer hover:-translate-y-2 transition-all relative overflow-hidden`}>
+    <div className="relative z-10 h-full flex flex-col justify-between space-y-16 text-white">
+      <Icon size={48} className="group-hover:rotate-12 transition-transform" />
+      <div>
+        <h3 className="text-3xl font-black italic uppercase tracking-tighter leading-tight">{title}</h3>
+        <p className="text-white/60 font-bold text-sm mt-1">{desc}</p>
+        <div className="mt-4 bg-white/10 w-fit px-4 py-1.5 rounded-full font-black text-[10px] uppercase tracking-widest border border-white/10">{sub}</div>
+      </div>
+    </div>
+    <Sparkles className="absolute -right-6 -bottom-6 text-white/5 group-hover:text-white/10 transition-colors" size={180} />
+  </div>
+);
+
+const StatCard = ({ label, val, icon: Icon, color }) => (
+  <div className="bg-slate-900/50 border border-slate-800 p-8 rounded-[2.5rem] text-center space-y-2">
+    <div className={`p-4 rounded-2xl bg-slate-950 w-fit mx-auto ${color} border border-slate-800`}>
+       <Icon size={24} />
+    </div>
+    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mt-4">{label}</p>
+    <p className="text-4xl font-black text-white">{val}</p>
+  </div>
+);
+
+const NavIcon = ({ icon: Icon, active, onClick, danger }) => (
+  <button 
+    onClick={onClick}
+    className={`p-4 rounded-2xl transition-all ${active ? (danger ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30') : 'text-slate-500 hover:text-slate-300'}`}>
+    <Icon size={24} />
+  </button>
+);
