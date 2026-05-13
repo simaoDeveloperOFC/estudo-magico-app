@@ -18,10 +18,10 @@ import {
 } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDbxYl7ZIR8kSi5jCu6FkdnHF8zGAXcG7g",
+  apiKey: "AIzaSyC2HOMgI15hXf-0YhceNWmj9dppl1sXi8s",
   authDomain: "estudo-magico-3276c.firebaseapp.com",
   projectId: "estudo-magico-3276c",
-  storageBucket: "estudo-magico-3276c.firebasestorage.app",
+  storageBucket: "estudo-magico-3276c.appspot.com",
   messagingSenderId: "17316174654",
   appId: "1:17316174654:web:a98e122832c2f0b44cea6f",
   measurementId: "G-Q4BEFNJZC8"
