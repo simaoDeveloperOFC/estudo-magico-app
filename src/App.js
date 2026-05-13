@@ -1,3 +1,27 @@
+// App.js
+import React, { useState, useEffect } from 'react';
+// Outros imports...
+
+// COLOCA AQUI (Linha 10 ou similar, fora do App)
+const ProgressToNextLevel = ({ xp }) => {
+  const nextLevelXP = 500;
+  const currentLevelXP = xp % nextLevelXP;
+  const percentage = (currentLevelXP / nextLevelXP) * 100;
+
+  return (
+    <div className="w-full bg-slate-200 h-3 rounded-full mt-2">
+      <div 
+        className="bg-indigo-600 h-full transition-all duration-500" 
+        style={{ width: `${percentage}%` }}
+      />
+    </div>
+  );
+};
+
+export default function App() {
+  // O resto do teu código...
+}
+
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   BookOpen, Camera, Upload, Brain, CheckCircle, 
@@ -21,7 +45,7 @@ import {
 
 // --- Configuração Firebase ---
 const firebaseConfig = {
-  apiKey: "AIzaSyC2HOMgI15hXf-0YhceNWmj9dppl1sXi8s",
+  apiKey: "AIzaSyDbxYl7ZIR8kSi5jCu6FkdnHF8zGAXcG7g",
   authDomain: "estudo-magico-3276c.firebaseapp.com",
   projectId: "estudo-magico-3276c",
   storageBucket: "estudo-magico-3276c.firebasestorage.app",
