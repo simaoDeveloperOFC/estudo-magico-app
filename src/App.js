@@ -6,14 +6,16 @@ import {
   Flame, History, Crown, Target, Zap, LayoutDashboard,
   Bell, Clock, Settings, X, MessageCircle, LogIn, RefreshCcw,
   Mail, User, ShieldCheck, Languages, Paperclip, GraduationCap, MapPin, ListChecks,
-  Plus, Book as BookIcon, Search, Library, Bookmark, Target as TargetIcon, ClipboardList,
+  Plus, Search, Bookmark, ClipboardList,
   FileText, Sword, Timer, HeartPulse, Download, Star, Award, ExternalLink, ShieldAlert,
-  BarChart3, Users, Send, Eye, Ban, CameraOff, ShoppingCart, MessageSquare, Bot, UserPlus, Fingerprint
+  BarChart3, Users, Send, Eye, Ban, CameraOff, ShoppingCart, MessageSquare, Bot, UserPlus, Fingerprint,
+  Link as LinkIcon, Lock, Megaphone, Coins
 } from 'lucide-react';
 import { initializeApp, getApps } from 'firebase/app';
 import { 
-  getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, 
-  signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut 
+  getAuth, signInAnonymously, onAuthStateChanged, 
+  signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut,
+  GoogleAuthProvider, signInWithPopup, updateProfile
 } from 'firebase/auth';
 import { 
   getFirestore, doc, setDoc, getDoc, collection, 
@@ -21,18 +23,22 @@ import {
   where, limit, orderBy
 } from 'firebase/firestore';
 
-// --- Configuração Firebase ---
-const apiKey = ""; 
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'estudo-magico-pro-vfinal';
+const firebaseConfig = {
+  apiKey: "AIzaSyC2HOMgI15hXf-0YhceNWmj9dppl1sXi8s", 
+  authDomain: "estudo-magico-3276c.firebaseapp.com",
+  projectId: "estudo-magico-3276c",
+  storageBucket: "estudo-magico-3276c.firebasestorage.app",
+  messagingSenderId: "17316174654",
+  appId: "1:17316174654:web:a98e122832c2f0b44cea6f"
+};
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const auth = getAuth(app);
 const db = getFirestore(app);
+const APP_ID = 'estudo-magico-pro'; 
 
 const ADMIN_EMAILS = ['simaopereira953@gmail.com', 'Henrique.xaves2013@gmail.com'];
 
-// --- Componentes UI ---
 const Button3D = ({ children, color = "blue", onClick, disabled, className = "" }) => {
   const colors = {
     blue: "bg-blue-600 shadow-[0_4px_0_0_#1d4ed8] active:shadow-none active:translate-y-[4px]",
@@ -61,88 +67,122 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [authError, setAuthError] = useState(''); // Estado para capturar erros de auth
+  const [authError, setAuthError] = useState('');
   const [view, setView] = useState('dashboard');
   const [authMode, setAuthMode] = useState('login'); 
-  // Forms
+  const [globalMessage, setGlobalMessage] = useState(null);
+  const [onlineCount, setOnlineCount] = useState(0);
+  const [allUsers, setAllUsers] = useState([]);
+  
+  const [studyData, setStudyData] = useState({ 
+    subject: '', 
+    content: '', 
+    result: null, 
+    type: 'quiz', 
+    images: [] // Para matrizes e resumos
+  });
+  const [isGenerating, setIsGenerating] = useState(false);
   const [authForm, setAuthForm] = useState({ email: '', password: '', name: '', country: 'Portugal', grade: '10.º Ano' });
-
-  // Estados de Estudo & Chat
-  const [subject, setSubject] = useState('');
-  const [notes, setNotes] = useState('');
-  const [studyData, setStudyData] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
   const [currentInput, setCurrentInput] = useState('');
-  
-  // Loja & Items
-  const [shopItems] = useState([
-    { id: 'title_pro', name: 'Mago Pro', cost: 500, type: 'title' },
-    { id: 'title_supremo', name: 'Mago Supremo', cost: 1500, type: 'title' },
-    { id: 'title_lenda', name: 'Lenda do Estudo', cost: 5000, type: 'title' },
-    { id: 'boost_2x', name: 'Multiplicador 2x XP (24h)', cost: 1000, type: 'booster' },
-  ]);
-
-  // Estados Sistema
-  const [history, setHistory] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
-  const [globalMessages, setGlobalMessages] = useState([]);
-  const [quizState, setQuizState] = useState({ current: 0, selected: null, checked: false, score: 0, finished: false });
+  const [leaderCategory, setLeaderCategory] = useState('xp');
 
   const isAdmin = useMemo(() => profile && ADMIN_EMAILS.includes(profile.email), [profile]);
 
-  // 1. Auth & Profile Logic
   useEffect(() => {
-    return onAuthStateChanged(auth, (u) => {
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
       if (!u) {
         setProfile(null);
         setLoading(false);
       }
     });
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
     if (!user) return;
-    const profRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'profile');
+
+    // Perfil e Presença
+    const profRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'settings', 'profile');
     const unsubProf = onSnapshot(profRef, (docSnap) => {
       if (docSnap.exists()) {
-        setProfile(docSnap.data());
+        const data = docSnap.data();
+        setProfile(data);
+        // Atualizar presença no Firestore para contagem online
+        updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'leaderboard', user.uid), {
+          lastActive: Date.now(),
+          xp: data.xp || 0,
+          coins: data.coins || 0,
+          level: data.level || 1,
+          name: data.name
+        });
+      } else {
+        const initialProfile = {
+          uid: user.uid,
+          name: user.displayName || "Explorador",
+          email: user.email,
+          country: 'Portugal',
+          grade: '10.º Ano',
+          xp: 0,
+          level: 1,
+          coins: 100,
+          xpMultiplier: 1,
+          coinMultiplier: 1,
+          activeTitle: 'Novato',
+          titles: ['Novato'],
+          photoURL: user.photoURL || '',
+          createdAt: serverTimestamp()
+        };
+        setDoc(profRef, initialProfile);
       }
       setLoading(false);
     });
 
-    const leaderQuery = collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard');
+    // Mensagens Globais (Desaparecem após 8s)
+    const announceRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'announcements', 'current');
+    const unsubAnnounce = onSnapshot(announceRef, (snap) => {
+      if (snap.exists()) {
+        setGlobalMessage(snap.data());
+        setTimeout(() => setGlobalMessage(null), 8000);
+      }
+    });
+
+    // Leaderboard e Contagem Online
+    const leaderQuery = collection(db, 'artifacts', APP_ID, 'public', 'data', 'leaderboard');
     const unsubLeader = onSnapshot(leaderQuery, (snap) => {
-      const l = snap.docs.map(d => d.data());
-      setLeaderboard(l.sort((a,b) => b.xp - a.xp).slice(0, 15));
+      const usersData = snap.docs.map(d => d.data());
+      setAllUsers(usersData);
+      setLeaderboard(usersData);
+      
+      // Contar online (ativos nos últimos 5 minutos)
+      const now = Date.now();
+      const online = usersData.filter(u => now - (u.lastActive || 0) < 300000).length;
+      setOnlineCount(online);
     });
 
-    const histRef = collection(db, 'artifacts', appId, 'users', user.uid, 'history');
-    const unsubHist = onSnapshot(histRef, (snap) => {
-      setHistory(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
-    });
-
-    const msgQuery = collection(db, 'artifacts', appId, 'public', 'data', 'global_messages');
-    const unsubMsg = onSnapshot(msgQuery, (snap) => {
-      setGlobalMessages(snap.docs.map(d => ({id: d.id, ...d.data()})));
-    });
-
-    return () => { unsubProf(); unsubLeader(); unsubHist(); unsubMsg(); };
+    return () => { unsubProf(); unsubAnnounce(); unsubLeader(); };
   }, [user]);
 
-  // Actions
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (e) {
+      setAuthError("Erro Google: " + e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleAuth = async () => {
     setLoading(true);
     setAuthError('');
     try {
       if (authMode === 'signup') {
-        // Validação básica local
-        if (!authForm.name || !authForm.email || !authForm.password) {
-          throw new Error("Preenche todos os campos!");
-        }
-        
         const cred = await createUserWithEmailAndPassword(auth, authForm.email, authForm.password);
-        
         const initialProfile = {
           uid: cred.user.uid,
           name: authForm.name,
@@ -151,252 +191,152 @@ export default function App() {
           grade: authForm.grade,
           xp: 0,
           level: 1,
-          titles: [],
-          activeTitle: '',
-          photoURL: '',
+          coins: 100,
           xpMultiplier: 1,
+          coinMultiplier: 1,
+          activeTitle: 'Novato',
+          titles: ['Novato'],
+          photoURL: '',
           createdAt: serverTimestamp()
         };
-
-        // Garantir criação do perfil antes de prosseguir
-        await setDoc(doc(db, 'artifacts', appId, 'users', cred.user.uid, 'settings', 'profile'), initialProfile);
-        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', cred.user.uid), {
-          uid: cred.user.uid,
-          name: authForm.name,
-          xp: 0,
-          level: 1,
-          activeTitle: ''
-        });
+        await setDoc(doc(db, 'artifacts', APP_ID, 'users', cred.user.uid, 'settings', 'profile'), initialProfile);
       } else {
         await signInWithEmailAndPassword(auth, authForm.email, authForm.password);
       }
     } catch (e) {
-      console.error("Erro na Auth:", e);
-      let msg = e.message;
-      if (e.code === 'auth/operation-not-allowed') {
-        msg = "O login por E-mail está desativado no Firebase. Ativa 'Email/Password' na consola do Firebase > Authentication > Sign-in method.";
-      } else if (msg.includes('auth/email-already-in-use')) {
-        msg = "Este e-mail já está registado.";
-      } else if (msg.includes('auth/invalid-email')) {
-        msg = "E-mail inválido.";
-      } else if (msg.includes('auth/weak-password')) {
-        msg = "A palavra-passe deve ter pelo menos 6 caracteres.";
-      } else if (msg.includes('auth/invalid-credential')) {
-        msg = "Dados de login incorretos.";
-      }
-      setAuthError(msg);
+      setAuthError(e.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGuestLogin = async () => {
-    setLoading(true);
+  const generateStudy = async (type = 'quiz') => {
+    if (!studyData.subject || !studyData.content) return;
+    setIsGenerating(true);
     try {
-      const cred = await signInAnonymously(auth);
-      // Criar perfil básico para convidado se não existir
-      const profRef = doc(db, 'artifacts', appId, 'users', cred.user.uid, 'settings', 'profile');
-      const docSnap = await getDoc(profRef);
-      if (!docSnap.exists()) {
-        const guestProfile = {
-          uid: cred.user.uid,
-          name: "Convidado Mágico",
-          email: "guest@estudomagico.pro",
-          xp: 0,
-          level: 1,
-          titles: [],
-          activeTitle: 'Viajante',
-          createdAt: serverTimestamp()
-        };
-        await setDoc(profRef, guestProfile);
-        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', cred.user.uid), {
-          uid: cred.user.uid,
-          name: "Convidado Mágico",
-          xp: 0,
-          level: 1,
-          activeTitle: 'Viajante'
-        });
-      }
+      const apiKey = ""; 
+      const prompt = `Atua como um explicador de elite. 
+      Tema: "${studyData.subject}". 
+      Conteúdo: "${studyData.content}". 
+      Gera um ${type === 'test' ? 'TESTE FORMATIVO com 5 perguntas difíceis' : 'QUIZ RÁPIDO com 3 perguntas'}.
+      ${studyData.images.length > 0 ? "O aluno anexou imagens de matrizes/resumos, foca-te no essencial dessas imagens." : ""}
+      Responde apenas em JSON: {"resumo": "Explicação clara", "quiz": [{"p": "pergunta", "options": ["a", "b", "c"], "correct": 0}]}`;
+
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: "application/json" }
+        })
+      });
+      const data = await res.json();
+      const parsed = JSON.parse(data.candidates[0].content.parts[0].text);
+      setStudyData(prev => ({ ...prev, result: parsed, type }));
+      
+      const gainXP = 50 * (profile?.xpMultiplier || 1);
+      const gainCoins = 20 * (profile?.coinMultiplier || 1);
+      
+      await updateDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'settings', 'profile'), { 
+        xp: (profile.xp || 0) + gainXP, 
+        coins: (profile.coins || 0) + gainCoins,
+        level: Math.floor(((profile.xp || 0) + gainXP) / 500) + 1 
+      });
     } catch (e) {
-      setAuthError("Erro no login de convidado: " + e.message);
+      console.error(e);
     } finally {
-      setLoading(false);
+      setIsGenerating(false);
     }
-  };
-
-  const updateXP = async (amount) => {
-    if (!profile) return;
-    const bonus = profile.xpMultiplier || 1;
-    const totalXP = (profile.xp || 0) + (amount * bonus);
-    const newLevel = Math.floor(totalXP / 1000) + 1;
-    const profRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'profile');
-    await updateDoc(profRef, { xp: totalXP, level: newLevel });
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', user.uid), { xp: totalXP, level: newLevel });
-  };
-
-  const handlePhotoUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const profRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'profile');
-        await updateDoc(profRef, { photoURL: reader.result });
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const buyItem = async (item) => {
-    if (profile.xp < item.cost) return alert("XP Insuficiente!");
-    const profRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'profile');
-    
-    if (item.type === 'title') {
-      const updatedTitles = [...(profile.titles || []), item.name];
-      await updateDoc(profRef, { 
-        xp: profile.xp - item.cost, 
-        titles: updatedTitles,
-        activeTitle: item.name
-      });
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', user.uid), { activeTitle: item.name });
-    } else if (item.type === 'booster') {
-      await updateDoc(profRef, { 
-        xp: profile.xp - item.cost, 
-        xpMultiplier: 2
-      });
-    }
-    alert(`Compraste: ${item.name}!`);
   };
 
   const sendChatMessage = async () => {
-    if (!currentInput) return;
+    if (!currentInput || !profile) return;
     const userMsg = { role: 'user', text: currentInput };
     setChatMessages([...chatMessages, userMsg]);
+    const q = currentInput;
     setCurrentInput('');
-    
     try {
-      const prompt = `És o Mestre da IA, um explicador especializado. Ajuda o aluno com esta dúvida: ${currentInput}. O aluno está no ${profile.grade}.`;
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+      const apiKey = ""; 
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+        body: JSON.stringify({ 
+          contents: [{ parts: [{ text: `Explica ao aluno ${profile.name} (Nível ${profile.level}): ${q}` }] }] 
+        })
       });
       const data = await response.json();
-      const botText = data.candidates[0].content.parts[0].text;
-      setChatMessages(prev => [...prev, { role: 'bot', text: botText }]);
-    } catch (e) { console.error(e); }
-  };
-
-  // Admin Abuse Logic
-  const adminAbuseAction = async (targetUid, action, val) => {
-    if (!isAdmin) return;
-    const targetRef = doc(db, 'artifacts', appId, 'users', targetUid, 'settings', 'profile');
-    const targetLeaderRef = doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', targetUid);
-    
-    if (action === 'give_xp') {
-      await updateDoc(targetRef, { xp: val });
-      await updateDoc(targetLeaderRef, { xp: val });
-    } else if (action === 'set_level') {
-      await updateDoc(targetRef, { level: val });
-      await updateDoc(targetLeaderRef, { level: val });
-    } else if (action === 'give_title') {
-      await updateDoc(targetRef, { activeTitle: val });
-      await updateDoc(targetLeaderRef, { activeTitle: val });
+      setChatMessages(prev => [...prev, { role: 'bot', text: data.candidates?.[0]?.content?.parts?.[0]?.text || "Erro na conexão." }]);
+    } catch (e) { 
+      setChatMessages(prev => [...prev, { role: 'bot', text: "Erro de ligação." }]); 
     }
-    alert("Abuso de Admin concluído com sucesso!");
   };
 
-  // --- Views ---
-
-  const Topbar = () => {
-    const progress = ((profile?.xp % 1000) / 1000) * 100;
-    return (
-      <header className="bg-white border-b sticky top-0 z-50 px-6 py-3 flex justify-between items-center shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            {profile?.photoURL ? (
-              <img src={profile.photoURL} className="w-12 h-12 rounded-2xl object-cover border-2 border-indigo-500 shadow-md" />
-            ) : (
-              <div className="w-12 h-12 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg"><Sparkles size={24}/></div>
-            )}
-            {profile?.xpMultiplier > 1 && <div className="absolute -top-2 -right-2 bg-amber-500 text-white text-[8px] font-black p-1 rounded-full border-2 border-white">2X</div>}
-          </div>
-          <div>
-            <div className="flex flex-col">
-              <span className="font-black text-lg leading-none">{profile?.name}</span>
-              {profile?.activeTitle && <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest">{profile.activeTitle}</span>}
-            </div>
-            <div className="w-32 h-1.5 bg-slate-100 rounded-full mt-1 overflow-hidden">
-              <div className="h-full bg-indigo-500 transition-all duration-1000" style={{ width: `${progress}%` }} />
+  const Sidebar = () => (
+    <header className="bg-white border-b sticky top-0 z-50 px-6 py-3 flex justify-between items-center shadow-sm">
+      <div className="flex items-center gap-4">
+        <div className="relative group">
+          {profile?.photoURL ? (
+            <img src={profile.photoURL} className="w-12 h-12 rounded-2xl object-cover border-2 border-indigo-500 shadow-md" alt="pfp" />
+          ) : (
+            <div className="w-12 h-12 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg"><Sparkles size={24}/></div>
+          )}
+          <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
+        </div>
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="font-black text-lg block leading-none">{profile?.name}</span>
+            <div className="flex items-center gap-1 bg-amber-100 px-1.5 py-0.5 rounded-lg border border-amber-200">
+              <Coins size={12} className="text-amber-600"/>
+              <span className="text-[10px] font-black text-amber-700">{profile?.coins || 0}</span>
             </div>
           </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest">{profile?.activeTitle}</span>
+            <span className="text-[9px] bg-slate-100 text-slate-600 px-1 rounded">Lvl {profile?.level}</span>
+          </div>
         </div>
-        
-        <div className="flex gap-1 bg-slate-50 p-1.5 rounded-2xl border">
-          <button onClick={() => setView('dashboard')} className={`p-2 rounded-xl ${view === 'dashboard' ? 'bg-white shadow text-indigo-600' : 'text-slate-400'}`}><LayoutDashboard size={18}/></button>
-          <button onClick={() => setView('chat')} className={`p-2 rounded-xl ${view === 'chat' ? 'bg-white shadow text-blue-500' : 'text-slate-400'}`}><MessageSquare size={18}/></button>
-          <button onClick={() => setView('shop')} className={`p-2 rounded-xl ${view === 'shop' ? 'bg-white shadow text-emerald-500' : 'text-slate-400'}`}><ShoppingCart size={18}/></button>
-          <button onClick={() => setView('leaderboard')} className={`p-2 rounded-xl ${view === 'leaderboard' ? 'bg-white shadow text-amber-500' : 'text-slate-400'}`}><Crown size={18}/></button>
-          {isAdmin && <button onClick={() => setView('admin')} className={`p-2 rounded-xl ${view === 'admin' ? 'bg-rose-600 text-white shadow' : 'text-slate-400 hover:text-rose-600'}`}><ShieldAlert size={18}/></button>}
-          <button onClick={() => setView('settings')} className={`p-2 rounded-xl ${view === 'settings' ? 'bg-white shadow text-slate-500' : 'text-slate-400'}`}><Settings size={18}/></button>
-        </div>
-      </header>
-    );
-  };
+      </div>
+      <nav className="flex gap-1 bg-slate-50 p-1.5 rounded-2xl border">
+        <button onClick={() => setView('dashboard')} className={`p-2 rounded-xl transition-all ${view === 'dashboard' ? 'bg-white shadow text-indigo-600' : 'text-slate-400 hover:text-indigo-400'}`}><LayoutDashboard size={18}/></button>
+        <button onClick={() => setView('daily')} className={`p-2 rounded-xl transition-all ${view === 'daily' ? 'bg-white shadow text-blue-500' : 'text-slate-400 hover:text-blue-400'}`}><BookOpen size={18}/></button>
+        <button onClick={() => setView('chat')} className={`p-2 rounded-xl transition-all ${view === 'chat' ? 'bg-white shadow text-emerald-500' : 'text-slate-400 hover:text-emerald-400'}`}><MessageSquare size={18}/></button>
+        <button onClick={() => setView('shop')} className={`p-2 rounded-xl transition-all ${view === 'shop' ? 'bg-white shadow text-amber-500' : 'text-slate-400 hover:text-amber-400'}`}><ShoppingCart size={18}/></button>
+        <button onClick={() => setView('leaderboard')} className={`p-2 rounded-xl transition-all ${view === 'leaderboard' ? 'bg-white shadow text-purple-500' : 'text-slate-400 hover:text-purple-400'}`}><Crown size={18}/></button>
+        <button onClick={() => setView('missions')} className={`p-2 rounded-xl transition-all ${view === 'missions' ? 'bg-white shadow text-rose-500' : 'text-slate-400 hover:text-rose-400'}`}><Target size={18}/></button>
+        {isAdmin && <button onClick={() => setView('admin')} className={`p-2 rounded-xl transition-all ${view === 'admin' ? 'bg-white shadow text-rose-600' : 'text-slate-400 hover:text-rose-600'}`}><ShieldAlert size={18}/></button>}
+        <button onClick={() => setView('settings')} className={`p-2 rounded-xl transition-all ${view === 'settings' ? 'bg-white shadow text-slate-500' : 'text-slate-400 hover:text-slate-600'}`}><Settings size={18}/></button>
+      </nav>
+    </header>
+  );
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-indigo-600 flex items-center justify-center p-6">
-        <Card className="max-w-md w-full space-y-6 animate-in zoom-in">
-          <div className="text-center space-y-2">
-            <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-4 transform rotate-3"><Sparkles size={40} /></div>
-            <h1 className="text-4xl font-black">Estudo Mágico</h1>
-            <p className="text-slate-400 font-bold">{authMode === 'login' ? 'Bem-vindo de volta!' : 'Cria a tua conta grátis'}</p>
+      <div className="min-h-screen bg-gradient-to-br from-indigo-600 to-blue-700 flex items-center justify-center p-6">
+        <Card className="max-w-md w-full space-y-6 shadow-2xl">
+          <div className="text-center">
+            <h1 className="text-4xl font-black text-slate-900 mb-1">Estudo Mágico</h1>
+            <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest">O Teu Sucesso Começa Aqui</p>
           </div>
-
           <div className="space-y-3">
-            {authMode === 'signup' && (
-              <input className="w-full p-4 bg-slate-50 border-2 rounded-2xl font-bold focus:border-indigo-500 outline-none transition-all" placeholder="Teu Nome" value={authForm.name} onChange={e => setAuthForm({...authForm, name: e.target.value})} />
-            )}
-            <input className="w-full p-4 bg-slate-50 border-2 rounded-2xl font-bold focus:border-indigo-500 outline-none transition-all" placeholder="E-mail" value={authForm.email} onChange={e => setAuthForm({...authForm, email: e.target.value})} />
+            {authMode === 'signup' && <input className="w-full p-4 bg-slate-50 border-2 rounded-2xl font-bold focus:border-indigo-500 outline-none transition-all" placeholder="Nome Completo" value={authForm.name} onChange={e => setAuthForm({...authForm, name: e.target.value})} />}
+            <input className="w-full p-4 bg-slate-50 border-2 rounded-2xl font-bold focus:border-indigo-500 outline-none transition-all" placeholder="E-mail" type="email" value={authForm.email} onChange={e => setAuthForm({...authForm, email: e.target.value})} />
             <input className="w-full p-4 bg-slate-50 border-2 rounded-2xl font-bold focus:border-indigo-500 outline-none transition-all" type="password" placeholder="Palavra-passe" value={authForm.password} onChange={e => setAuthForm({...authForm, password: e.target.value})} />
+            {authError && <p className="text-rose-500 text-[10px] font-black text-center uppercase">{authError}</p>}
+            <Button3D className="w-full h-14" color="blue" onClick={handleAuth} disabled={loading}>{authMode === 'login' ? 'ENTRAR' : 'CRIAR CONTA'}</Button3D>
             
-            {authMode === 'signup' && (
-              <div className="grid grid-cols-2 gap-3">
-                <select className="p-4 bg-slate-50 border-2 rounded-2xl font-bold appearance-none cursor-pointer" value={authForm.grade} onChange={e => setAuthForm({...authForm, grade: e.target.value})}>
-                  <option>7.º Ano</option><option>8.º Ano</option><option>9.º Ano</option><option>10.º Ano</option><option>11.º Ano</option><option>12.º Ano</option>
-                </select>
-                <select className="p-4 bg-slate-50 border-2 rounded-2xl font-bold appearance-none cursor-pointer" value={authForm.country} onChange={e => setAuthForm({...authForm, country: e.target.value})}>
-                  <option>Portugal</option><option>Brasil</option><option>Angola</option>
-                </select>
-              </div>
-            )}
-          </div>
-
-          {}
-          {authError && (
-            <div className="bg-rose-50 text-rose-600 p-3 rounded-xl text-[11px] font-bold border border-rose-100 flex items-center gap-2 animate-in slide-in-from-top-2">
-              <AlertTriangle size={14} className="shrink-0" />
-              {authError}
+            <div className="relative py-4">
+              <div className="absolute inset-0 flex items-center"><span className="w-full border-t"></span></div>
+              <div className="relative flex justify-center text-xs uppercase font-bold"><span className="bg-white px-2 text-slate-400">Ou continua com</span></div>
             </div>
-          )}
-
-          <Button3D className="w-full h-14" color="blue" onClick={handleAuth} disabled={loading}>
-            {loading ? <RefreshCcw className="animate-spin" /> : (authMode === 'login' ? 'Entrar' : 'Criar Conta')}
-          </Button3D>
-          
-          <button 
-            onClick={handleGuestLogin}
-            className="w-full py-2 text-xs font-black text-slate-400 hover:text-indigo-600 transition-colors uppercase tracking-widest"
-          >
-            Ou entrar como Convidado (Modo de Teste)
-          </button>
-          
-          <p className="text-center text-sm font-bold text-slate-400">
-            {authMode === 'login' ? 'Novo por aqui?' : 'Já tens conta?'} 
-            <button className="text-indigo-600 ml-1 hover:underline" onClick={() => { setAuthMode(authMode === 'login' ? 'signup' : 'login'); setAuthError(''); }}>
-              {authMode === 'login' ? 'Cria uma agora' : 'Faz Login'}
+            
+            <button onClick={handleGoogleSignIn} className="w-full py-3 px-4 bg-white border-2 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-slate-50 active:scale-95 transition-all">
+              <svg className="w-5 h-5" viewBox="0 0 24 24"><path fill="#EA4335" d="M12 5.04c1.94 0 3.68.67 5.05 1.97l3.78-3.78C18.53 1.18 15.54 0 12 0 7.31 0 3.25 2.69 1.18 6.59l4.41 3.42c1.04-3.12 3.96-5.39 6.41-5.39z"/><path fill="#4285F4" d="M23.49 12.27c0-.85-.07-1.67-.21-2.46H12v4.66h6.44c-.28 1.48-1.12 2.74-2.38 3.58v2.97h3.85c2.25-2.07 3.58-5.12 3.58-8.75z"/><path fill="#FBBC05" d="M5.59 14.59c-.27-.81-.42-1.67-.42-2.59 0-.92.15-1.78.42-2.59L1.18 6.59C.43 8.24 0 10.07 0 12s.43 3.76 1.18 5.41l4.41-3.41z"/><path fill="#34A853" d="M12 24c3.24 0 5.95-1.07 7.94-2.91l-3.85-2.97c-1.09.73-2.49 1.16-4.09 1.16-3.15 0-5.81-2.13-6.76-4.99l-4.41 3.41C3.25 21.31 7.31 24 12 24z"/></svg>
+              Google
             </button>
-          </p>
+          </div>
+          <button className="w-full text-center text-xs font-black text-slate-500 uppercase tracking-tighter" onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}>
+            {authMode === 'login' ? 'Não tens conta? Regista-te agora' : 'Já tens conta? Faz login'}
+          </button>
         </Card>
       </div>
     );
@@ -404,233 +344,291 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
-      <Topbar />
+      <Sidebar />
+      
+      {globalMessage && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-rose-600 text-white px-6 py-3 rounded-2xl shadow-2xl font-black text-sm flex items-center gap-3 animate-bounce">
+          <Megaphone size={18}/> {globalMessage.text}
+        </div>
+      )}
 
-      <main className="max-w-6xl mx-auto p-4 md:p-8 space-y-6 pb-24">
+      <main className="max-w-6xl mx-auto p-6 space-y-8 pb-24">
         
-        {/* Dashboard */}
         {view === 'dashboard' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in">
-            <Card onClick={() => setView('daily_mode')} className="hover:-translate-y-2 border-b-8 border-b-blue-500">
-              <BookOpen className="text-blue-500 mb-4" size={32}/>
-              <h3 className="font-black text-xl">Modo Diário</h3>
-              <p className="text-slate-400 text-sm mt-1">Transforma apontamentos em resumos.</p>
-            </Card>
-            <Card onClick={() => setView('test_mode')} className="hover:-translate-y-2 border-b-8 border-b-rose-500">
-              <TargetIcon className="text-rose-500 mb-4" size={32}/>
-              <h3 className="font-black text-xl">Modo Teste</h3>
-              <p className="text-slate-400 text-sm mt-1">Fotos da matriz e plano de estudo.</p>
-            </Card>
-            <Card onClick={() => setView('revisions')} className="hover:-translate-y-2 border-b-8 border-b-amber-500">
-              <RefreshCcw className="text-amber-500 mb-4" size={32}/>
-              <h3 className="font-black text-xl">Revisões</h3>
-              <p className="text-slate-400 text-sm mt-1">Revisit conteúdos passados.</p>
-            </Card>
+          <div className="space-y-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <Card onClick={() => setView('daily')} className="border-b-4 border-blue-500 hover:-translate-y-1">
+                <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center mb-3"><BookOpen/></div>
+                <h3 className="font-black text-lg">Modo Estudo</h3>
+                <p className="text-xs text-slate-400 font-bold">Resumos e Quizzes</p>
+              </Card>
+              <Card onClick={() => setView('chat')} className="border-b-4 border-emerald-500 hover:-translate-y-1">
+                <div className="w-12 h-12 bg-emerald-50 text-emerald-500 rounded-xl flex items-center justify-center mb-3"><Bot/></div>
+                <h3 className="font-black text-lg">Mestre IA</h3>
+                <p className="text-xs text-slate-400 font-bold">Dúvidas 24/7</p>
+              </Card>
+              <Card onClick={() => setView('missions')} className="border-b-4 border-rose-500 hover:-translate-y-1">
+                <div className="w-12 h-12 bg-rose-50 text-rose-500 rounded-xl flex items-center justify-center mb-3"><Target/></div>
+                <h3 className="font-black text-lg">Missões</h3>
+                <p className="text-xs text-slate-400 font-bold">Ganha Recompensas</p>
+              </Card>
+              <Card className="border-b-4 border-amber-500">
+                <div className="w-12 h-12 bg-amber-50 text-amber-500 rounded-xl flex items-center justify-center mb-3"><Coins/></div>
+                <h3 className="font-black text-lg">{profile?.coins || 0} Moedas</h3>
+                <p className="text-[10px] text-slate-400 font-black uppercase">Boost XP: {profile?.xpMultiplier}x</p>
+              </Card>
+            </div>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+               <Card className="lg:col-span-2 space-y-4">
+                 <h2 className="text-xl font-black flex items-center gap-2"><Zap className="text-amber-500"/> Notícias da Academia</h2>
+                 <div className="space-y-3">
+                   <div className="p-4 bg-slate-50 rounded-2xl border flex items-center gap-4">
+                     <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center shrink-0 font-black">!</div>
+                     <p className="text-sm font-bold text-slate-600">A nova temporada de exames começou! Usa o Modo Teste para te preparares.</p>
+                   </div>
+                 </div>
+               </Card>
+               <Card className="space-y-4">
+                 <h2 className="text-xl font-black flex items-center gap-2"><Users className="text-blue-500"/> Online Agora</h2>
+                 <div className="text-4xl font-black text-indigo-600">{onlineCount}</div>
+                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Estudantes Ativos</p>
+               </Card>
+            </div>
           </div>
         )}
 
-        {/* Chat IA */}
-        {view === 'chat' && (
-          <div className="max-w-2xl mx-auto h-[70vh] flex flex-col bg-white rounded-3xl border shadow-xl overflow-hidden animate-in slide-in-from-bottom-4">
-            <div className="p-4 border-b bg-blue-600 text-white flex items-center gap-3">
-              <Bot />
-              <h3 className="font-black">Mestre da IA</h3>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {chatMessages.length === 0 && (
-                <div className="h-full flex flex-col items-center justify-center text-slate-300">
-                  <MessageSquare size={48} className="mb-2" />
-                  <p className="font-black uppercase text-xs">Faz uma pergunta específica sobre a matéria</p>
+        {view === 'daily' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="space-y-4">
+              <h2 className="text-2xl font-black">Área de Estudo {studyData.type === 'test' ? '🏆 MODO TESTE' : ''}</h2>
+              <input className="w-full p-4 bg-slate-50 border-2 rounded-2xl font-bold focus:border-blue-500 outline-none" placeholder="Disciplina / Tema" value={studyData.subject} onChange={e => setStudyData({...studyData, subject: e.target.value})} />
+              <textarea className="w-full p-4 bg-slate-50 border-2 rounded-2xl font-bold h-40 focus:border-blue-500 outline-none" placeholder="Cola aqui os teus apontamentos..." value={studyData.content} onChange={e => setStudyData({...studyData, content: e.target.value})} />
+              
+              <div className="p-4 border-2 border-dashed border-slate-200 rounded-2xl space-y-3">
+                 <p className="text-[10px] font-black text-slate-400 uppercase text-center">Anexar Imagens (Matriz/Resumos)</p>
+                 <div className="flex gap-2 justify-center">
+                    <button onClick={() => {
+                      const url = prompt("URL da imagem do resumo/matriz:");
+                      if(url) setStudyData(prev => ({...prev, images: [...prev.images, url]}));
+                    }} className="p-3 bg-white border rounded-xl hover:bg-slate-50 active:scale-95 transition-all text-slate-600"><ImageIcon size={20}/></button>
+                 </div>
+                 {studyData.images.length > 0 && (
+                   <div className="flex gap-2 overflow-x-auto pb-2">
+                      {studyData.images.map((img, i) => (
+                        <div key={i} className="relative w-12 h-12 shrink-0">
+                          <img src={img} className="w-full h-full object-cover rounded-lg border" />
+                          <button onClick={() => setStudyData(p => ({...p, images: p.images.filter((_, idx) => idx !== i)}))} className="absolute -top-1 -right-1 bg-rose-500 text-white rounded-full p-0.5"><X size={10}/></button>
+                        </div>
+                      ))}
+                   </div>
+                 )}
+              </div>
+
+              <div className="flex gap-2">
+                <Button3D className="flex-1" color="blue" onClick={() => generateStudy('quiz')} disabled={isGenerating}>MODO QUIZ</Button3D>
+                <Button3D className="flex-1" color="rose" onClick={() => generateStudy('test')} disabled={isGenerating}>MODO TESTE</Button3D>
+              </div>
+            </Card>
+            
+            <div className="space-y-4">
+              {studyData.result ? (
+                <Card className="prose animate-in fade-in duration-500">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-black flex items-center gap-2 text-indigo-600"><Sparkles/> {studyData.type === 'test' ? 'Matriz e Teste Prático' : 'Resumo Mágico'}</h3>
+                    <button onClick={() => setStudyData({...studyData, result: null})} className="text-slate-300 hover:text-rose-500"><Trash2 size={18}/></button>
+                  </div>
+                  <div className="text-sm font-medium text-slate-600 leading-relaxed py-4 border-b">
+                    {studyData.result.resumo}
+                  </div>
+                  <div className="mt-4 space-y-4">
+                    {studyData.result.quiz.map((q, i) => (
+                      <div key={i} className="p-4 bg-slate-50 rounded-2xl border-2 border-white shadow-sm">
+                        <p className="font-black text-xs mb-3 text-slate-700">{i+1}. {q.p}</p>
+                        <div className="grid gap-2">
+                          {q.options.map((o, oi) => (
+                            <button key={oi} onClick={() => alert(oi === q.correct ? "Mágico! Acertaste." : "Quase! Tenta de novo.")} className="text-left p-3 bg-white border-2 border-slate-100 rounded-xl text-[11px] font-bold hover:border-indigo-300 hover:bg-indigo-50 transition-all">{o}</button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              ) : (
+                <div className="h-full border-4 border-dashed rounded-3xl flex flex-col items-center justify-center text-slate-200 p-10 text-center">
+                  <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4"><Brain size={48} className="opacity-20"/></div>
+                  <p className="font-black uppercase text-xs tracking-widest">Insere o tema para gerar magia</p>
                 </div>
               )}
-              {chatMessages.map((msg, i) => (
-                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] p-4 rounded-2xl font-medium ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-slate-100 text-slate-700 rounded-tl-none'}`}>
-                    {msg.text}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="p-4 border-t flex gap-2">
-              <input className="flex-1 p-3 bg-slate-50 border rounded-xl font-bold" placeholder="Dúvida sobre matemática..." value={currentInput} onChange={e => setCurrentInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && sendChatMessage()} />
-              <button onClick={sendChatMessage} className="p-3 bg-blue-600 text-white rounded-xl"><Send size={20}/></button>
             </div>
           </div>
         )}
 
-        {/* Shop View */}
-        {view === 'shop' && (
-          <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in">
-            <div className="text-center">
-              <h2 className="text-4xl font-black text-emerald-600">Loja Mágica</h2>
-              <p className="text-slate-400 font-bold">Troca o teu XP por itens lendários</p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {shopItems.map(item => (
-                <Card key={item.id} className="flex justify-between items-center group">
-                  <div className="flex items-center gap-4">
-                    <div className={`p-4 rounded-2xl ${item.type === 'title' ? 'bg-amber-50 text-amber-500' : 'bg-emerald-50 text-emerald-500'}`}>
-                      {item.type === 'title' ? <Award size={32}/> : <Zap size={32}/>}
-                    </div>
-                    <div>
-                      <h4 className="font-black text-xl">{item.name}</h4>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{item.type}</p>
-                    </div>
-                  </div>
-                  <button onClick={() => buyItem(item)} className="bg-slate-100 px-6 py-3 rounded-2xl font-black group-hover:bg-emerald-500 group-hover:text-white transition-all">
-                    {item.cost} XP
-                  </button>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Admin Abuse */}
-        {view === 'admin' && isAdmin && (
-          <div className="space-y-6 animate-in slide-in-from-bottom-6">
-            <h2 className="text-3xl font-black text-rose-600 flex items-center gap-3"><ShieldAlert /> Admin Abuse Zone</h2>
-            <Card className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <input id="target-id" className="p-4 bg-slate-50 border-2 rounded-2xl font-bold" placeholder="UID do Utilizador" />
-                <input id="target-val" className="p-4 bg-slate-50 border-2 rounded-2xl font-bold" placeholder="Valor (XP/Lvl/Título)" />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <Button3D color="amber" onClick={() => adminAbuseAction(document.getElementById('target-id').value, 'give_xp', Number(document.getElementById('target-val').value))}>Dar XP</Button3D>
-                <Button3D color="purple" onClick={() => adminAbuseAction(document.getElementById('target-id').value, 'set_level', Number(document.getElementById('target-val').value))}>Set Level</Button3D>
-                <Button3D color="blue" onClick={() => adminAbuseAction(document.getElementById('target-id').value, 'give_title', document.getElementById('target-val').value)}>Dar Título</Button3D>
-              </div>
-              <Button3D color="rose" className="w-full" onClick={() => adminAbuseAction(document.getElementById('target-id').value, 'give_title', "Amigo do Admin")}>Dar "Amigo do Admin"</Button3D>
-            </Card>
-          </div>
-        )}
-
-        {/* Settings */}
-        {view === 'settings' && (
-          <Card className="max-w-md mx-auto space-y-6 animate-in fade-in">
-            <h2 className="text-2xl font-black text-center">Configurações</h2>
-            <div className="space-y-4">
-              <div className="flex flex-col items-center gap-4 border-b pb-6">
-                <div className="relative group cursor-pointer" onClick={() => document.getElementById('pfp-upload').click()}>
-                  {profile?.photoURL ? (
-                    <img src={profile.photoURL} className="w-24 h-24 rounded-3xl object-cover border-4 border-indigo-500 shadow-xl" />
-                  ) : (
-                    <div className="w-24 h-24 bg-slate-100 text-slate-300 rounded-3xl flex items-center justify-center border-4 border-dashed"><Camera size={32}/></div>
-                  )}
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 rounded-3xl flex items-center justify-center text-white text-xs font-black transition-all">MUDAR FOTO</div>
-                  <input type="file" id="pfp-upload" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
-                </div>
-                <div className="text-center">
-                  <h3 className="font-black text-xl">{profile?.name}</h3>
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{profile?.activeTitle || 'Sem Título'}</p>
-                </div>
-              </div>
-              
-              <Button3D color="white" className="w-full text-rose-600 border-rose-100" onClick={() => signOut(auth)}>Sair da Conta</Button3D>
-            </div>
-          </Card>
-        )}
-
-        {/* Leaderboard */}
-        {view === 'leaderboard' && (
-          <div className="max-w-2xl mx-auto space-y-6 animate-in slide-in-from-bottom-4">
-            <h2 className="text-3xl font-black text-center flex items-center justify-center gap-3"><Crown className="text-amber-500"/> Ranking Mundial</h2>
-            <div className="space-y-2">
-              {leaderboard.map((p, i) => (
-                <div key={p.uid} className={`flex items-center justify-between p-4 bg-white rounded-2xl border-2 transition-all ${p.uid === user.uid ? 'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200' : 'border-slate-100'}`}>
-                   <div className="flex items-center gap-4">
-                     <span className={`w-8 h-8 rounded-lg flex items-center justify-center font-black ${i === 0 ? 'bg-amber-400 text-white' : 'bg-slate-100 text-slate-400'}`}>{i + 1}</span>
-                     <div className="flex flex-col">
-                       <span className="font-black">{p.name} {p.uid === user.uid && "(Tu)"}</span>
-                       <span className="text-[9px] font-black text-indigo-500 uppercase tracking-tighter">{p.activeTitle}</span>
+        {view === 'missions' && (
+          <div className="max-w-3xl mx-auto space-y-6">
+             <h2 className="text-3xl font-black flex items-center gap-2"><Target className="text-rose-500"/> Missões Diárias</h2>
+             <div className="grid gap-4">
+               {[
+                 { title: "Mestre do Quiz", desc: "Completa 3 quizzes hoje", reward: "50 Moedas", progress: 0, total: 3 },
+                 { title: "Sempre a Aprender", desc: "Gera um Modo Teste difícil", reward: "100 Moedas", progress: 1, total: 1 },
+                 { title: "Socializador", desc: "Fala com o Mestre IA", reward: "20 XP", progress: 0, total: 1 },
+               ].map((m, i) => (
+                 <Card key={i} className="flex items-center justify-between">
+                   <div className="space-y-1">
+                     <h4 className="font-black text-slate-800">{m.title}</h4>
+                     <p className="text-xs font-bold text-slate-400">{m.desc}</p>
+                     <div className="w-48 h-2 bg-slate-100 rounded-full overflow-hidden mt-2">
+                        <div className="h-full bg-rose-500" style={{width: `${(m.progress/m.total)*100}%`}}></div>
                      </div>
                    </div>
                    <div className="text-right">
-                     <p className="font-black text-indigo-600">{p.xp} XP</p>
-                     <p className="text-[10px] font-bold text-slate-300 uppercase">Lvl {p.level}</p>
+                     <div className="text-xs font-black text-rose-500 uppercase">{m.reward}</div>
+                     <Button3D color="white" disabled={m.progress < m.total} className="mt-2 py-1.5 px-4 text-[10px]">RECLAMAR</Button3D>
                    </div>
-                </div>
-              ))}
-            </div>
+                 </Card>
+               ))}
+             </div>
           </div>
         )}
 
-        {/* Modo Diário Input */}
-        {view === 'daily_mode' && (
-          <Card className="max-w-2xl mx-auto space-y-6">
-            <h2 className="text-2xl font-black">Criar Novo Resumo</h2>
-            <div className="space-y-4">
-              <input className="w-full p-4 border-2 rounded-2xl font-bold bg-slate-50" placeholder="Disciplina" value={subject} onChange={e => setSubject(e.target.value)} />
-              <textarea className="w-full p-4 border-2 rounded-2xl h-48 font-medium bg-slate-50" placeholder="Apontamentos..." value={notes} onChange={e => setNotes(e.target.value)} />
+        {view === 'leaderboard' && (
+          <div className="max-w-2xl mx-auto space-y-6">
+            <h2 className="text-3xl font-black text-center">Top Alunos</h2>
+            <div className="flex gap-2 justify-center">
+               <button onClick={() => setLeaderCategory('xp')} className={`px-4 py-2 rounded-xl font-black text-xs uppercase ${leaderCategory === 'xp' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-400'}`}>Por XP</button>
+               <button onClick={() => setLeaderCategory('coins')} className={`px-4 py-2 rounded-xl font-black text-xs uppercase ${leaderCategory === 'coins' ? 'bg-amber-500 text-white shadow-lg' : 'bg-white text-slate-400'}`}>Por Moedas</button>
+               <button onClick={() => setLeaderCategory('level')} className={`px-4 py-2 rounded-xl font-black text-xs uppercase ${leaderCategory === 'level' ? 'bg-emerald-600 text-white shadow-lg' : 'bg-white text-slate-400'}`}>Por Nível</button>
             </div>
-            <Button3D className="w-full" onClick={async () => {
-               setLoading(true);
-               try {
-                 const prompt = `Gera um resumo e quiz JSON para a disciplina ${subject} com base nestas notas: ${notes}. Responde apenas JSON: {"summary": [{"title": "...", "content": "...", "emoji": "✨"}], "quiz": [{"question": "...", "options": ["A", "B", "C", "D"], "correctAnswerIndex": 0}]}`;
-                 const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
-                   method: 'POST',
-                   body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } })
-                 });
-                 const resData = await response.json();
-                 const data = JSON.parse(resData.candidates[0].content.parts[0].text);
-                 setStudyData(data);
-                 await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'history'), {
-                   title: subject,
-                   data: data,
-                   timestamp: serverTimestamp()
-                 });
-                 updateXP(50);
-                 setView('study_view');
-               } catch (e) { console.error(e); } finally { setLoading(false); }
-            }}>Lançar Magia de Estudo</Button3D>
-          </Card>
-        )}
-
-        {/* Revisões */}
-        {view === 'revisions' && (
-          <div className="max-w-3xl mx-auto space-y-4 animate-in slide-in-from-bottom-4">
-            <h2 className="text-3xl font-black flex items-center gap-3"><RefreshCcw /> Suas Revisões</h2>
-            {history.length === 0 ? (
-              <p className="text-center p-20 text-slate-300 font-black">Ainda não tens estudos para rever!</p>
-            ) : (
-              history.map(item => (
-                <Card key={item.id} className="flex justify-between items-center group" onClick={() => { setStudyData(item.data); setSubject(item.title); setView('study_view'); }}>
+            <Card className="p-0 overflow-hidden shadow-xl">
+              {leaderboard.sort((a,b) => (b[leaderCategory] || 0) - (a[leaderCategory] || 0)).map((p, i) => (
+                <div key={p.uid} className={`flex items-center justify-between p-4 border-b last:border-none transition-all ${p.uid === user.uid ? 'bg-indigo-50 border-l-4 border-l-indigo-600' : 'hover:bg-slate-50'}`}>
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center group-hover:bg-indigo-50 transition-all"><BookOpen className="text-slate-400 group-hover:text-indigo-500" /></div>
+                    <span className={`font-black w-8 text-center ${i === 0 ? 'text-amber-500 text-xl' : i === 1 ? 'text-slate-400 text-lg' : i === 2 ? 'text-amber-700' : 'text-slate-300'}`}>#{i+1}</span>
+                    <div className="w-10 h-10 rounded-xl bg-slate-100 overflow-hidden border shadow-sm">
+                      {p.photoURL ? <img src={p.photoURL} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-indigo-50 text-indigo-300"><User size={18}/></div>}
+                    </div>
                     <div>
-                      <h4 className="font-black text-lg">{item.title}</h4>
-                      <p className="text-xs font-bold text-slate-400">{item.timestamp?.toDate().toLocaleDateString()}</p>
+                      <div className="font-black text-slate-800 text-sm">{p.name}</div>
+                      <div className="text-[9px] font-black text-indigo-400 uppercase tracking-wider">{p.activeTitle || 'Novato'}</div>
                     </div>
                   </div>
-                  <ChevronRight className="text-slate-200 group-hover:translate-x-1" />
-                </Card>
-              ))
-            )}
+                  <div className="text-right">
+                    <div className="font-black text-indigo-600">
+                      {leaderCategory === 'xp' && `${p.xp || 0} XP`}
+                      {leaderCategory === 'coins' && `${p.coins || 0} Moedas`}
+                      {leaderCategory === 'level' && `Lvl ${p.level || 1}`}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </Card>
           </div>
         )}
 
-        {/* Study View (Resumo + Quiz) */}
-        {view === 'study_view' && studyData && (
-          <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in">
-            <div className="flex bg-white p-1 rounded-2xl border shadow-sm w-fit mx-auto">
-              <button onClick={() => setQuizState({...quizState, finished: false})} className="px-6 py-2 rounded-xl font-black text-xs bg-indigo-600 text-white">CONTEÚDO</button>
-            </div>
-            {studyData.summary.map((s, i) => (
-              <Card key={i} className="border-l-8 border-l-indigo-500">
-                <h3 className="text-xl font-black mb-2">{s.emoji} {s.title}</h3>
-                <p className="text-slate-600 font-medium leading-relaxed">{s.content}</p>
+        {view === 'admin' && isAdmin && (
+          <div className="max-w-3xl mx-auto space-y-6 animate-in slide-in-from-bottom duration-500">
+            <h2 className="text-3xl font-black text-rose-600 flex items-center gap-2"><ShieldAlert/> Painel Supremo de Admin</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card className="space-y-4 border-rose-200">
+                <h3 className="font-black text-lg flex items-center gap-2 text-rose-600"><Megaphone size={20}/> Anúncio Global</h3>
+                <textarea id="globalMsg" className="w-full p-4 bg-slate-50 border-2 rounded-2xl font-bold focus:border-rose-500 outline-none h-24" placeholder="Esta mensagem aparecerá para todos por 8 segundos..." />
+                <Button3D className="w-full" color="rose" onClick={() => {
+                  const val = document.getElementById('globalMsg').value;
+                  if(val) setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'announcements', 'current'), { text: val, sender: profile.name, ts: Date.now() });
+                }}>PROPAGAR AVISO</Button3D>
               </Card>
-            ))}
-            <Button3D className="w-full" color="green" onClick={() => setView('dashboard')}>Marcar como Revisto</Button3D>
+
+              <Card className="space-y-4">
+                <h3 className="font-black text-lg flex items-center gap-2 text-slate-700"><Users size={20}/> Controlo de Utilizadores</h3>
+                <select id="targetUser" className="w-full p-3 bg-slate-50 border-2 rounded-xl font-bold focus:border-slate-400 outline-none">
+                   <option value="">Escolher Aluno...</option>
+                   {allUsers.map(u => (
+                     <option key={u.uid} value={u.uid}>{u.name} (Lvl {u.level})</option>
+                   ))}
+                </select>
+                <div className="grid grid-cols-1 gap-2">
+                  <div className="flex gap-2">
+                    <input id="abuseValue" type="number" className="w-24 p-2 border rounded-xl font-bold" placeholder="Valor" />
+                    <Button3D className="flex-1 py-2 text-xs" color="slate" onClick={() => {
+                      const uid = document.getElementById('targetUser').value;
+                      const val = parseInt(document.getElementById('abuseValue').value);
+                      if(uid && val) updateDoc(doc(db, 'artifacts', APP_ID, 'users', uid, 'settings', 'profile'), { xp: val });
+                    }}>SET XP</Button3D>
+                  </div>
+                  <div className="flex gap-2">
+                    <input id="abuseCoins" type="number" className="w-24 p-2 border rounded-xl font-bold" placeholder="Valor" />
+                    <Button3D className="flex-1 py-2 text-xs" color="slate" onClick={() => {
+                      const uid = document.getElementById('targetUser').value;
+                      const val = parseInt(document.getElementById('abuseCoins').value);
+                      if(uid && val) updateDoc(doc(db, 'artifacts', APP_ID, 'users', uid, 'settings', 'profile'), { coins: val });
+                    }}>SET MOEDAS</Button3D>
+                  </div>
+                  <div className="flex gap-2">
+                    <input id="xpMult" type="number" step="0.1" className="w-24 p-2 border rounded-xl font-bold" placeholder="X" />
+                    <Button3D className="flex-1 py-2 text-xs" color="purple" onClick={() => {
+                      const uid = document.getElementById('targetUser').value;
+                      const val = parseFloat(document.getElementById('xpMult').value);
+                      if(uid && val) updateDoc(doc(db, 'artifacts', APP_ID, 'users', uid, 'settings', 'profile'), { xpMultiplier: val });
+                    }}>MULT XP</Button3D>
+                  </div>
+                  <div className="flex gap-2">
+                    <input id="coinMult" type="number" step="0.1" className="w-24 p-2 border rounded-xl font-bold" placeholder="X" />
+                    <Button3D className="flex-1 py-2 text-xs" color="amber" onClick={() => {
+                      const uid = document.getElementById('targetUser').value;
+                      const val = parseFloat(document.getElementById('coinMult').value);
+                      if(uid && val) updateDoc(doc(db, 'artifacts', APP_ID, 'users', uid, 'settings', 'profile'), { coinMultiplier: val });
+                    }}>MULT COINS</Button3D>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          </div>
+        )}
+
+        {view === 'settings' && (
+          <div className="max-w-md mx-auto space-y-6">
+            <Card className="text-center p-8 space-y-6 shadow-xl">
+              <div className="relative w-32 h-32 mx-auto">
+                <div className="w-full h-full bg-slate-100 rounded-[2.5rem] flex items-center justify-center border-4 border-white shadow-xl overflow-hidden ring-4 ring-indigo-50">
+                  {profile?.photoURL ? <img src={profile.photoURL} className="w-full h-full object-cover" /> : <User size={50} className="text-slate-300"/>}
+                </div>
+                <button onClick={() => {
+                  const url = prompt("URL da tua nova foto de perfil:");
+                  if(url) updateDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'settings', 'profile'), { photoURL: url });
+                }} className="absolute bottom-1 right-1 bg-white p-2.5 rounded-2xl shadow-lg border-2 border-indigo-50 hover:bg-slate-50 transition-all text-indigo-600"><Camera size={18}/></button>
+              </div>
+              
+              <div className="space-y-1">
+                <h3 className="text-2xl font-black text-slate-800">{profile?.name}</h3>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{profile?.email}</p>
+              </div>
+
+              <div className="space-y-3 text-left">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Título Ativo</label>
+                  <select className="w-full p-4 bg-slate-50 border-2 rounded-2xl font-bold text-sm focus:border-indigo-500 outline-none" value={profile?.activeTitle} onChange={e => updateDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'settings', 'profile'), { activeTitle: e.target.value })}>
+                    {profile?.titles?.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-4 space-y-3">
+                <Button3D color="rose" className="w-full" onClick={() => signOut(auth)}>TERMINAR SESSÃO</Button3D>
+                <p className="text-[10px] font-bold text-slate-300 uppercase">Estudo Mágico Pro v2.5 — Feito com Magia</p>
+              </div>
+            </Card>
           </div>
         )}
 
       </main>
-
+      
       {loading && (
-        <div className="fixed bottom-6 right-6 bg-indigo-600 text-white p-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-bounce">
-          <RefreshCcw className="animate-spin" size={20} />
-          <span className="text-xs font-black uppercase tracking-widest">A processar...</span>
+        <div className="fixed inset-0 bg-white/80 backdrop-blur-md flex flex-col items-center justify-center z-[100] animate-in fade-in duration-300">
+           <div className="w-20 h-20 bg-indigo-600 rounded-3xl flex items-center justify-center shadow-2xl mb-4 animate-bounce">
+              <Sparkles className="text-white" size={40}/>
+           </div>
+           <p className="font-black text-indigo-600 uppercase tracking-widest text-xs">A carregar o teu destino...</p>
         </div>
       )}
     </div>
