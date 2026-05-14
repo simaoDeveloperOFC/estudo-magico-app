@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import './index.css';
+// A linha do index.css foi removida daqui
 import App from './App';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
